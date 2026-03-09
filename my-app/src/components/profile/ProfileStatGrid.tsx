@@ -1,67 +1,93 @@
-import { Users, Layers, ArrowUpRight } from "lucide-react";
+"use client"
 
-interface ProfileStatsProps {
-    stats: {
-        followers: number;
-        following: number;
-        posts: number;
-    };
-}
+import { Layers, Users, ArrowUpRight } from "lucide-react"
+import { useProfile } from "./ProfileHeader"
 
-export const ProfileStats = ({ stats }: ProfileStatsProps) => (
-    /* Tightened gap and margin */
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
-        
-        {/* Posts / Deployments */}
-        <div className="relative overflow-hidden bg-white dark:bg-black border border-zinc-300 dark:border-zinc-800 p-6 group transition-all hover:border-black dark:hover:border-white">
-            <div className="absolute inset-0 nothing-dot-grid opacity-[0.05] pointer-events-none" />
-            <div className="relative z-10 flex flex-col justify-between h-full">
-                <div className="flex items-center justify-between mb-6">
-                    <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-400">Total Posts</span>
-                    <Layers size={14} className="text-zinc-300 dark:text-zinc-700" />
-                </div>
-                <div>
-                    <p className="font-nothing text-5xl text-black dark:text-white leading-none">
-                      23
-                    </p>
-                    <p className="text-[8px] font-bold uppercase tracking-[0.2em] text-zinc-500 mt-3 flex items-center gap-2">
-                        System Logs <ArrowUpRight size={10} />
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        {/* Followers - Inverted Theme */}
-        <div className="relative overflow-hidden bg-black dark:bg-white border border-black dark:border-white p-6 text-white dark:text-black shadow-[6px_6px_0px_0px_rgba(0,0,0,0.05)] dark:shadow-[6px_6px_0px_0px_rgba(255,255,255,0.05)]">
-            <div className="relative z-10 flex flex-col justify-between h-full">
-                <div className="flex items-center justify-between mb-6">
-                    <span className="text-[9px] font-black uppercase tracking-[0.3em] opacity-60">Followers</span>
-                    <Users size={14} />
-                </div>
-                <div>
-                    <p className="font-nothing text-5xl leading-none">
-                       2
-                    </p>
-                    <p className="text-[8px] font-bold uppercase tracking-[0.2em] mt-3 opacity-60">Verified Nodes</p>
-                </div>
-            </div>
-        </div>
-
-        {/* Following */}
-        <div className="relative overflow-hidden bg-white dark:bg-black border border-zinc-300 dark:border-zinc-800 p-6 group transition-all hover:border-black dark:hover:border-white">
-            <div className="absolute inset-0 nothing-dot-grid opacity-[0.05] pointer-events-none" />
-            <div className="relative z-10 flex flex-col justify-between h-full">
-                <div className="flex items-center justify-between mb-6">
-                    <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-400">Following</span>
-                    <div className="w-1.5 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-800" />
-                </div>
-                <div>
-                    <p className="font-nothing text-5xl text-black dark:text-white leading-none">
-                      5
-                    </p>
-                    <p className="text-[8px] font-bold uppercase tracking-[0.2em] text-zinc-500 mt-3">Active Connections</p>
-                </div>
-            </div>
-        </div>
+/* ─── SKELETON ─── */
+export const ProfileStatsSkeleton = () => (
+    <div className="animate-pulse grid grid-cols-3 gap-[2px] mt-[2px]">
+        {[1, 2, 3].map(i => (
+            <div key={i} className="h-[140px] bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800" />
+        ))}
     </div>
-);
+)
+
+/* ─── DOT GRID ─── */
+const DotGrid = () => (
+    <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+            backgroundImage: "radial-gradient(circle, currentColor 1px, transparent 1px)",
+            backgroundSize: "18px 18px",
+            opacity: 0.05,
+        }}
+    />
+)
+
+/* ─── PROFILE STATS ─── */
+export function ProfileStats() {
+    const { profile } = useProfile()
+
+    if (!profile) return <ProfileStatsSkeleton />
+
+    const stats = [
+        {
+            label: "Total_Posts",
+            value: profile.postsCount,
+            sub: "System_Logs",
+            icon: <Layers size={13} className="text-zinc-300 dark:text-zinc-700" />,
+            inverted: false,
+            arrow: true,
+        },
+        {
+            label: "Followers",
+            value: profile.followersCount,
+            sub: "Verified_Nodes",
+            icon: <Users size={13} />,
+            inverted: true,
+            arrow: false,
+        },
+        {
+            label: "Following",
+            value: profile.followingCount,
+            sub: "Active_Connections",
+            icon: <div className="w-1.5 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700" />,
+            inverted: false,
+            arrow: false,
+        },
+    ]
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-[2px] mt-[2px] font-mono">
+            {stats.map((s, i) => (
+                <div
+                    key={s.label}
+                    className={`relative overflow-hidden p-7 transition-all duration-300
+                        ${s.inverted
+                            ? "bg-black dark:bg-white text-white dark:text-black"
+                            : "bg-white dark:bg-[#0F0F0F] text-black dark:text-white hover:bg-zinc-50 dark:hover:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800"
+                        }`}
+                >
+                    {!s.inverted && <DotGrid />}
+                    <div className="relative z-10 flex flex-col gap-8">
+                        <div className="flex items-center justify-between">
+                            <span className={`text-[9px] font-bold uppercase tracking-[0.35em] ${s.inverted ? "opacity-50" : "text-zinc-400"}`}>
+                                {s.label}
+                            </span>
+                            {s.icon}
+                        </div>
+                        <div>
+                            <p className="text-[52px] font-black leading-none tracking-[-0.05em]">
+                                {s.value.toLocaleString()}
+                            </p>
+                            <p className={`text-[8px] font-bold uppercase tracking-[0.25em] mt-3 flex items-center gap-1.5 ${s.inverted ? "opacity-50" : "text-zinc-400"}`}>
+                                {s.sub}
+                                {s.arrow && <ArrowUpRight size={9} />}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    )
+}

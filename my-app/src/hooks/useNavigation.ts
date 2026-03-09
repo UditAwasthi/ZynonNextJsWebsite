@@ -4,7 +4,7 @@ export function useNavigation() {
   const pathname = usePathname();
   
   const navItems = [
-    { label: "Home", href: "/dashboard", icon: "Home" },
+    { label: "Home", href: "/home", icon: "Home" },
     { label: "Search", href: "/search", icon: "Search" },
     { label: "Explore", href: "/explore", icon: "Compass" },
     { label: "Messages", href: "/messages", icon: "MessageSquare" },
