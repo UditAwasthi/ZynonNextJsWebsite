@@ -52,7 +52,7 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const response = await fetch(`${BASE_URL}auth/login`, {
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -60,32 +60,21 @@ export default function LoginPage() {
 
       const data = await response.json();
 
+      // 👇 Add this
+      console.log("Full response data:", data);
+      console.log("Access Token:", data.data?.accessToken);
+      console.log("Refresh Token:", data.data?.refreshToken);
+
       if (!response.ok) {
         throw new Error(data.message || "Invalid credentials.");
       }
 
-      // 1. EXTRACT TOKEN
       const token = data.data.accessToken;
-
-      // 2. PERSISTENCE
-      // Save to localStorage for client-side API calls
       localStorage.setItem("accessToken", token);
-
-      // Save to Cookie for Server-side Rendering (SSR) and Middleware
-      // If 'Remember Me' is off, we could set a shorter max-age, but 1 day is standard.
-      const maxAge = rememberMe ? 60 * 60 * 24 * 7 : 60 * 60 * 24; // 7 days vs 1 day
-      document.cookie = `accessToken=${token}; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
-
-      // Trigger storage event for other components (like Navbars)
       window.dispatchEvent(new Event("storage"));
 
-      // 3. SUCCESS STATE & REDIRECT
       setSuccess(true);
-
-      // Delay to show the "Authenticated" popup before moving to dashboard
-      setTimeout(() => {
-        window.location.replace("/profile");
-      }, 2000);
+      setTimeout(() => window.location.replace("/profile"), 200);
 
     } catch (err: any) {
       triggerError(err.message);

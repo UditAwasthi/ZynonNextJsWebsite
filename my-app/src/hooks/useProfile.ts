@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import api from "../lib/api";
+import api from "../lib/api/api";
 
 const CACHE_KEY = "zynon:profile:me";
 const CACHE_TTL = 60_000;

@@ -3,7 +3,7 @@
 @import "tailwindcss";
 
 /* 2. Setup Manual Dark Mode Variant (Tailwind v4) */
-@variant dark (&:where(.dark, .dark *));
+/* @variant dark (&:where(.dark, .dark *)); */
 
 /* 3. Variables & Theme Strategy */
 :root {
@@ -72,4 +72,9 @@
     background-size: 24px 24px;
     opacity: 0.1;
   }
+}
+
+.nothing-dot-grid {
+  background-image: radial-gradient(#ffffff 1px, transparent 1px);
+  background-size: 24px 24px;
 }

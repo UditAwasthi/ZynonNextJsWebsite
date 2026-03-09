@@ -3,7 +3,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import toast from "react-hot-toast"
 import { useRouter } from "next/navigation"
-import api from "../../../src/lib/api"
+import api from "../../../src/lib/api/api"
 import { Plus, X, Globe, Lock, Loader2, CheckCircle2 } from "lucide-react"
 import { setUploadState } from "../../../src/components/create/UploadOverlay" // adjust path to where you put UploadOverlay.tsx
 

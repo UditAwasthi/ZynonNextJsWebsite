@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { MapPin, Globe, Lock, Edit3, Share2, ShieldCheck, RefreshCw } from "lucide-react"
 import Link from "next/link"
-import api from "../../../src/lib/api"
+import api from "../../lib/api/api"
 
 /* ─── TYPES ─── */
 export interface ProfileUser {
@@ -21,7 +21,9 @@ export interface ProfileUser {
     postsCount: number
     createdAt: string
     user: {
+        _id: string       // ← add this
         username: string
+        email?: string
     }
 }
 
@@ -147,7 +149,7 @@ export function ProfileHeader() {
                                 {profile.isPrivate ? "Private" : "Public"}
                             </span>
                             <span className="w-1 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                         
+
                             <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-400">
                                 User Since {new Date(profile.createdAt).getFullYear()}
                             </span>

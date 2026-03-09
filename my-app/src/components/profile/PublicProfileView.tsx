@@ -1,13 +1,24 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { MapPin, Globe, Lock, ShieldCheck, Share2, Users, Layers, ArrowUpRight, UserPlus, Check } from "lucide-react"
+import { MapPin, Globe, Lock, ShieldCheck, Share2, Check, Grid } from "lucide-react"
+import FollowButton from "./FollowButton"
+import { PublicProfileStats } from "./PublicProfileStats"
+import { swr, cache } from "../../lib/cache"
+import FollowListModal from "./FollowListModal"
+import PublicPostsGrid from "./PublicPostsGrid"
 
-/* ─── TYPES — mapped from actual API response shape ─── */
+/* ─── TYPES ─── */
+interface ProfileUser {
+    _id: string
+    username: string
+}
+
 interface PublicProfile {
     _id: string
-    username: string       // from data.user.username
-    name?: string          // may not exist if user hasn't set it
+    user: ProfileUser
+    username: string
+    name?: string
     bio?: string
     location?: string
     website?: string
@@ -26,17 +37,13 @@ interface PublicProfile {
 /* ─── FETCH — no auth token ─── */
 async function fetchPublicProfile(username: string): Promise<PublicProfile> {
     const base = process.env.NEXT_PUBLIC_API_BASE || "https://zynon.onrender.com/api/"
-    console.log(`Fetching public profile for ${username} from ${base}profile/${username}`)
     const res = await fetch(`${base}profile/${username}`)
     if (!res.ok) throw new Error("Profile not found")
     const json = await res.json()
     const d = json.data
-    console.log("Fetched public profile data:", d)
     return {
         ...d,
-        // username is nested under d.user.username in the response
         username: d.user?.username ?? username,
-        // name may not exist — fall back to username
         name: d.name ?? undefined,
     }
 }
@@ -78,68 +85,53 @@ const NotFound = ({ username }: { username: string }) => (
     </div>
 )
 
-/* ─── STATS ─── */
-const PublicStats = ({ profile }: { profile: PublicProfile }) => {
-    const stats = [
-        { label: "Total_Posts", value: profile.postsCount,    sub: "System_Logs",        inverted: false, arrow: true  },
-        { label: "Followers",   value: profile.followersCount, sub: "Verified_Nodes",     inverted: true,  arrow: false },
-        { label: "Following",   value: profile.followingCount, sub: "Active_Connections", inverted: false, arrow: false },
-    ]
-
-    return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-[2px] mt-[2px]">
-            {stats.map((s, i) => (
-                <div key={s.label}
-                    className={`relative overflow-hidden p-7 transition-all duration-300
-                        ${s.inverted
-                            ? "bg-black dark:bg-white text-white dark:text-black"
-                            : "bg-white dark:bg-[#0F0F0F] text-black dark:text-white hover:bg-zinc-50 dark:hover:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800"
-                        }`}
-                >
-                    {!s.inverted && <DotGrid />}
-                    <div className="relative z-10 flex flex-col gap-8">
-                        <div className="flex items-center justify-between">
-                            <span className={`text-[9px] font-bold uppercase tracking-[0.35em] ${s.inverted ? "opacity-50" : "text-zinc-400"}`}>
-                                {s.label}
-                            </span>
-                            {i === 0 && <Layers size={13} className="text-zinc-300 dark:text-zinc-700" />}
-                            {i === 1 && <Users size={13} className="opacity-50" />}
-                            {i === 2 && <div className="w-1.5 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700" />}
-                        </div>
-                        <div>
-                            <p className="text-[52px] font-black leading-none tracking-[-0.05em]">
-                                {s.value.toLocaleString()}
-                            </p>
-                            <p className={`text-[8px] font-bold uppercase tracking-[0.25em] mt-3 flex items-center gap-1.5 ${s.inverted ? "opacity-50" : "text-zinc-400"}`}>
-                                {s.sub} {s.arrow && <ArrowUpRight size={9} />}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            ))}
-        </div>
-    )
-}
+/* ─── FOLLOW STATE — tracks whether viewer is following this profile ─── */
+type FollowState = "following" | "requested" | "not_following"
 
 /* ─── MAIN ─── */
 export default function PublicProfileView({ username }: { username: string }) {
-
-    console.log("==== COMPONENT RENDERED ====")
-    console.log("Username prop received:", username)
     const [profile, setProfile] = useState<PublicProfile | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(false)
     const [copied, setCopied] = useState(false)
+    const [followersCount, setFollowersCount] = useState(0)
+    const [modal, setModal] = useState<"followers" | "following" | null>(null)
+    // Track follow state so we can decide whether to show the grid on private profiles
+    const [viewerFollowState, setViewerFollowState] = useState<FollowState>("not_following")
 
     useEffect(() => {
         if (!username) return
         setLoading(true)
         setError(false)
-        fetchPublicProfile(username)
-            .then(data => setProfile(data))
-            .catch(() => setError(true))
-            .finally(() => setLoading(false))
+
+        swr(
+            `profile:${username}`,
+            () => fetchPublicProfile(username),
+            (data, fromCache) => {
+                setProfile(data)
+                setFollowersCount(data.followersCount)
+                if (fromCache) setLoading(false)
+            },
+            () => setError(true),
+        ).finally(() => setLoading(false))
     }, [username])
+
+    // Listen for follow state changes from FollowButton via the onFollowChange callback
+    const handleFollowChange = (delta: number) => {
+        setFollowersCount(prev => Math.max(0, prev + delta))
+        cache.invalidate(`profile:${username}`)
+        // +1 means just followed (public profile), -1 means unfollowed
+        if (delta === +1) setViewerFollowState("following")
+        if (delta === 0) setViewerFollowState("requested")   // private profile — request sent
+        if (delta === -1) setViewerFollowState("not_following")
+    }
+
+    // Extended callback that carries the new state directly from FollowButton
+    // We also sync viewerFollowState by inspecting delta signs
+    const handleFollowStateChange = (delta: number, newState?: FollowState) => {
+        handleFollowChange(delta)
+        if (newState) setViewerFollowState(newState)
+    }
 
     const handleShare = () => {
         navigator.clipboard?.writeText(window.location.href)
@@ -152,6 +144,10 @@ export default function PublicProfileView({ username }: { username: string }) {
 
     const joinedYear = new Date(profile.createdAt).getFullYear()
     const displayName = profile.name || profile.username
+
+    // Decide whether to show the private wall:
+    // Private profile AND viewer has not been accepted (not "following")
+    const showPrivateWall = profile.isPrivate && viewerFollowState !== "following"
 
     return (
         <div className="font-mono">
@@ -186,10 +182,10 @@ export default function PublicProfileView({ username }: { username: string }) {
                             )}
                         </div>
 
-                        {/* Follow button */}
-                        <button className="w-40 md:w-48 h-11 border-2 border-black dark:border-white bg-black dark:bg-white text-white dark:text-black font-bold uppercase text-[9px] tracking-[0.25em] flex items-center justify-center gap-2.5 hover:invert transition-all active:scale-95 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
-                            <UserPlus size={12} /> Follow
-                        </button>
+                        <FollowButton
+                            userId={profile.user._id}
+                            onFollowChange={handleFollowChange}
+                        />
                     </div>
 
                     {/* Info column */}
@@ -237,8 +233,12 @@ export default function PublicProfileView({ username }: { username: string }) {
                                     </div>
                                 )}
                                 {profile.website && (
-                                    <a href={profile.website} target="_blank" rel="noopener noreferrer"
-                                        className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 hover:text-black dark:hover:text-white transition-colors group">
+                                    <a
+                                        href={profile.website}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.25em] text-zinc-400 hover:text-black dark:hover:text-white transition-colors group"
+                                    >
                                         <Globe size={13} className="text-zinc-300 dark:text-zinc-600 group-hover:rotate-12 transition-transform" />
                                         <span className="underline underline-offset-4 decoration-zinc-200 dark:decoration-zinc-800">
                                             {profile.website.replace(/^https?:\/\//, "")}
@@ -262,7 +262,65 @@ export default function PublicProfileView({ username }: { username: string }) {
             </div>
 
             {/* ── STATS ── */}
-            <PublicStats profile={profile} />
+            <PublicProfileStats
+                postsCount={profile.postsCount}
+                followersCount={followersCount}
+                followingCount={profile.followingCount}
+                onFollowersClick={() => setModal("followers")}
+                onFollowingClick={() => setModal("following")}
+            />
+
+            {/* ── FOLLOW LIST MODAL ── */}
+            {modal && (
+                <FollowListModal
+                    userId={profile.user._id}
+                    mode={modal}
+                    onClose={() => setModal(null)}
+                />
+            )}
+
+            {/* ── POSTS SECTION ── */}
+            <PublicProfileTabs
+                userId={profile.user._id}
+                isPrivate={showPrivateWall}
+                username={profile.username}
+            />
+        </div>
+    )
+}
+
+/* ─── TABS ─── */
+function PublicProfileTabs({
+    userId,
+    isPrivate,
+    username,
+}: {
+    userId: string
+    isPrivate: boolean
+    username: string
+}) {
+    // For public profiles we only show "Artifacts" (posts).
+    // Tab bar is kept for visual consistency and future extensibility.
+    return (
+        <div className="mt-16 space-y-10 pb-24">
+            {/* Tab control */}
+            <div className="flex justify-center">
+                <div className="flex p-1 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
+                    <div
+                        className="px-8 py-2 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-3 bg-black dark:bg-white text-white dark:text-black"
+                    >
+                        <Grid size={14} strokeWidth={2.5} />
+                        Artifacts
+                    </div>
+                </div>
+            </div>
+
+            {/* Grid */}
+            <PublicPostsGrid
+                userId={userId}
+                isPrivate={isPrivate}
+                username={username}
+            />
         </div>
     )
 }

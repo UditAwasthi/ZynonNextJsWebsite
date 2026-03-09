@@ -1,6 +1,6 @@
 "use client";
 
-import api from "../../../../src/lib/api";
+import api from "../../../../src/lib/api/api";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {

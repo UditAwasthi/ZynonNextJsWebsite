@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-};
+    serverExternalPackages: ["axios"], // 👈 moved out of experimental
+    trailingSlash: false,
+}
 
 export default nextConfig;
