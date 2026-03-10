@@ -23,7 +23,7 @@ export const getSocket = (token: string): Socket => {
             reconnection: true,
             reconnectionAttempts: 5,
             reconnectionDelay: 1000,
-            transports: ["polling"],
+            transports: ["websocket", "polling"],
             withCredentials: true,
         });
 
