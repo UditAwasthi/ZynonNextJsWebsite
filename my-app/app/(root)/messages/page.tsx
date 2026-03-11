@@ -90,6 +90,7 @@ export default function DirectPage() {
                     onSelect={handleSelect}
                     activeId={selectedThread?.threadId}
                     currentUserId={currentUserId}
+                    token={token}
                     unreadMap={unreadMap}
                 />
             </div>

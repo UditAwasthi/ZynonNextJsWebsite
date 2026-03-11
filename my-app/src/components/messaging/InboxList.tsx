@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, Plus, Loader2 } from "lucide-react";
+import { Search, Plus, Loader2, ImageIcon, Film, Mic } from "lucide-react";
 import { getInbox } from "../../lib/api/chatApi";
+import { getSocket } from "../../lib/socket";
 
 interface Thread {
   threadId: string;
@@ -12,15 +13,27 @@ interface Thread {
     content?: string;
     createdAt?: string;
     senderId?: string;
+    mediaType?: "image" | "video" | "audio" | "file";
   } | null;
   lastActivity: string;
   unreadCount?: number;
+}
+
+interface SocketMessage {
+  _id: string;
+  threadId: string;
+  senderId: { _id: string; username: string };
+  content?: string;
+  createdAt: string;
+  mediaType?: "image" | "video" | "audio" | "file";
+  type?: "text" | "media";
 }
 
 interface Props {
   onSelect: (thread: Thread) => void;
   activeId?: string;
   currentUserId: string;
+  token: string;
   unreadMap?: Record<string, number>;
 }
 
@@ -47,7 +60,7 @@ const formatTime = (iso?: string) => {
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
 };
 
-export default function InboxList({ onSelect, activeId, currentUserId, unreadMap = {} }: Props) {
+export default function InboxList({ onSelect, activeId, currentUserId, token, unreadMap = {} }: Props) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +80,44 @@ export default function InboxList({ onSelect, activeId, currentUserId, unreadMap
     };
     fetchInbox();
   }, []);
+
+  // ── Real-time inbox updates via socket ──────────────────────────────────────
+  useEffect(() => {
+    if (!token) return;
+    const socket = getSocket(token);
+
+    // Use a named handler so we only remove THIS listener on cleanup,
+    // not every new_message listener on the shared socket (e.g. ChatThread's)
+    const handleNewMessage = (msg: SocketMessage) => {
+      const tid = typeof msg.threadId === "string"
+        ? msg.threadId
+        : (msg.threadId as any).toString();
+
+      setThreads((prev) => {
+        const idx = prev.findIndex((t) => t.threadId === tid);
+        if (idx === -1) return prev;
+        const updated: Thread = {
+          ...prev[idx],
+          lastMessage: {
+            content: msg.content || "",
+            createdAt: msg.createdAt,
+            senderId: msg.senderId._id,
+            mediaType: msg.mediaType,
+          },
+          lastActivity: msg.createdAt,
+        };
+        const rest = prev.filter((_, i) => i !== idx);
+        return [updated, ...rest];
+      });
+    };
+
+    socket.on("new_message", handleNewMessage);
+
+    return () => {
+      // Remove only our specific handler, not all listeners
+      socket.off("new_message", handleNewMessage);
+    };
+  }, [token]);
 
   const filtered = threads.filter((t) =>
     t.user?.username.toLowerCase().includes(search.toLowerCase())
@@ -182,12 +233,15 @@ export default function InboxList({ onSelect, activeId, currentUserId, unreadMap
                     </span>
                   </div>
                   <span
-                    className={`text-[13px] truncate w-full text-left ${
+                    className={`text-[13px] truncate w-full text-left flex items-center gap-1 ${
                       isActive ? "text-zinc-300 dark:text-zinc-700" : "text-zinc-500"
                     }`}
                   >
                     {isLastMine && <span className="opacity-60">You: </span>}
-                    {thread.lastMessage?.content || "Start a conversation"}
+                    {thread.lastMessage?.mediaType === "image" && <><ImageIcon size={12} className="shrink-0" /><span>Photo</span></>}
+                    {thread.lastMessage?.mediaType === "video" && <><Film size={12} className="shrink-0" /><span>Video</span></>}
+                    {thread.lastMessage?.mediaType === "audio" && <><Mic size={12} className="shrink-0" /><span>Audio</span></>}
+                    {!thread.lastMessage?.mediaType && (thread.lastMessage?.content || "Start a conversation")}
                   </span>
                 </div>
               </button>
