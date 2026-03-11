@@ -1,25 +1,6 @@
 "use client"
 
-import { Layers, Users, ArrowUpRight } from "lucide-react"
-
-export const PublicProfileStatsSkeleton = () => (
-    <div className="animate-pulse grid grid-cols-3 gap-[2px] mt-[2px]">
-        {[1, 2, 3].map(i => (
-            <div key={i} className="h-[140px] bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800" />
-        ))}
-    </div>
-)
-
-const DotGrid = () => (
-    <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-            backgroundImage: "radial-gradient(circle, currentColor 1px, transparent 1px)",
-            backgroundSize: "18px 18px",
-            opacity: 0.05,
-        }}
-    />
-)
+import { Grid, Users, ArrowUpRight } from "lucide-react"
 
 interface PublicProfileStatsProps {
     postsCount: number
@@ -29,86 +10,103 @@ interface PublicProfileStatsProps {
     onFollowingClick: () => void
 }
 
-export function PublicProfileStats({
-    postsCount,
-    followersCount,
-    followingCount,
-    onFollowersClick,
-    onFollowingClick,
+/* ─── SKELETON ─── */
+export const PublicProfileStatsSkeleton = () => (
+    <div className="animate-pulse grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 w-full max-w-7xl mx-auto">
+        {[1, 2, 3].map(i => (
+            <div key={i} className="h-[120px] bg-zinc-100 dark:bg-zinc-900 rounded-[32px] border border-zinc-200 dark:border-zinc-800" />
+        ))}
+    </div>
+)
+
+export function PublicProfileStats({ 
+    postsCount, 
+    followersCount, 
+    followingCount, 
+    onFollowersClick, 
+    onFollowingClick 
 }: PublicProfileStatsProps) {
+
     const stats = [
         {
             label: "Total_Posts",
-            value: postsCount,
-            sub: "System_Logs",
-            icon: <Layers size={13} className="text-zinc-300 dark:text-zinc-700" />,
-            inverted: false,
-            arrow: true,
+            value: postsCount ?? 0,
+            sub: "Repository_Entries",
+            icon: <Grid size={13} />,
             onClick: undefined,
         },
         {
             label: "Followers",
-            value: followersCount,
+            value: followersCount ?? 0,
             sub: "Verified_Nodes",
             icon: <Users size={13} />,
-            inverted: true,
-            arrow: false,
             onClick: onFollowersClick,
         },
         {
             label: "Following",
-            value: followingCount,
-            sub: "Active_Connections",
-            icon: <div className="w-1.5 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700" />,
-            inverted: false,
-            arrow: false,
+            value: followingCount ?? 0,
+            sub: "Network_Links",
+            icon: <Users size={13} />,
             onClick: onFollowingClick,
-        },
+        }
     ]
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-[2px] mt-[2px] font-mono">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 w-full max-w-7xl mx-auto font-mono">
             {stats.map((s) => {
-                const isClickable = !!s.onClick
-                const Tag = isClickable ? "button" : "div"
+                const isClickable = !!s.onClick;
+                const Tag = isClickable ? "button" : "div";
 
                 return (
                     <Tag
                         key={s.label}
                         onClick={s.onClick}
-                        className={`relative overflow-hidden p-7 transition-all duration-300 text-left w-full
-                            ${s.inverted
-                                ? "bg-black dark:bg-white text-white dark:text-black"
-                                : "bg-white dark:bg-[#0F0F0F] text-black dark:text-white border border-zinc-200 dark:border-zinc-800"
-                            }
-                            ${isClickable
-                                ? "cursor-pointer hover:brightness-90 dark:hover:brightness-110 active:scale-[0.98]"
-                                : "hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
-                            }`}
+                        className={`relative overflow-hidden py-6 px-8 rounded-[32px] transition-all duration-500 text-left border
+                            bg-white/70 dark:bg-[#0A0A0A]/90 backdrop-blur-3xl 
+                            border-zinc-200 dark:border-zinc-800 text-black dark:text-white
+                            ${isClickable ? "cursor-pointer hover:border-black dark:hover:border-white active:scale-[0.98]" : ""}
+                        `}
                     >
-                        {!s.inverted && <DotGrid />}
-                        <div className="relative z-10 flex flex-col gap-8">
-                            <div className="flex items-center justify-between">
-                                <span className={`text-[9px] font-bold uppercase tracking-[0.35em] ${s.inverted ? "opacity-50" : "text-zinc-400"}`}>
-                                    {s.label}
-                                </span>
-                                {s.icon}
-                            </div>
-                            <div>
-                                <p className="text-[52px] font-black leading-none tracking-[-0.05em]">
+                        {/* Unified Dot Matrix — Subtle technical texture */}
+                        <div
+                            className="absolute inset-0 pointer-events-none opacity-[0.05]"
+                            style={{
+                                backgroundImage: "radial-gradient(circle, currentColor 0.8px, transparent 0.8px)",
+                                backgroundSize: "16px 16px",
+                            }}
+                        />
+
+                        {/* Corner Accent — The signature Nothing red hint */}
+                        <div className="absolute top-0 left-0 w-px h-8 bg-gradient-to-b from-[#FF0000]/40 to-transparent" />
+
+                        <div className="relative z-10 flex flex-col gap-1">
+                            {/* Label: Minimalist Prefix */}
+                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500 flex items-center gap-2">
+                                {s.label}:
+                                <span className="opacity-30">{s.icon}</span>
+                            </span>
+                            
+                            {/* Value Section */}
+                            <div className="flex items-baseline gap-2">
+                                <p className="text-3xl md:text-4xl font-black leading-none tracking-tighter">
                                     {s.value.toLocaleString()}
                                 </p>
-                                <p className={`text-[8px] font-bold uppercase tracking-[0.25em] mt-3 flex items-center gap-1.5 ${s.inverted ? "opacity-50" : "text-zinc-400"}`}>
-                                    {s.sub}
-                                    {s.arrow && <ArrowUpRight size={9} />}
-                                    {isClickable && (
-                                        <span className="ml-1 opacity-40">↗</span>
-                                    )}
-                                </p>
+                                {isClickable && (
+                                    <span className="text-[10px] text-[#FF0000] font-black uppercase tracking-tighter opacity-70">
+                                        Active
+                                    </span>
+                                )}
                             </div>
                         </div>
+                        
+                        {/* Bottom-right indicator for clickable modules */}
+                        {isClickable && (
+                            <div className="absolute bottom-4 right-6 opacity-20">
+                                <ArrowUpRight size={14} />
+                            </div>
+                        )}
                     </Tag>
-                )
+                );
             })}
         </div>
     )

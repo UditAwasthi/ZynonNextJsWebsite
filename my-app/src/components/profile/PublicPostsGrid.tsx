@@ -4,9 +4,6 @@ import { useEffect, useState, useRef, useCallback } from "react"
 import { Heart, MessageCircle, Copy } from "lucide-react"
 import PostModal from "./PostModal"
 
-/* ═══════════════════════════════════════════════════════════════
-   TYPES
-═══════════════════════════════════════════════════════════════ */
 interface PostGridItem {
     _id: string
     media: { url: string; type: "image" | "video" }[]
@@ -23,19 +20,9 @@ interface PublicPostsGridProps {
     username?: string
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   CACHE
-═══════════════════════════════════════════════════════════════ */
 const gridCache = new Map<string, { posts: PostGridItem[]; cursor: string | null; ts: number }>()
 const CACHE_TTL = 2 * 60 * 1000
 
-/* ═══════════════════════════════════════════════════════════════
-   MINIMAL CUSTOM CSS
-   Only what Tailwind can't express:
-   — Keyframes
-   — ::after pseudo-elements (skeleton dot textures)
-   — .ntg-tile:hover child-combinator selectors
-═══════════════════════════════════════════════════════════════ */
 const GCSS = `
 @keyframes ntg-shimmer   { from{background-position:200% 0} to{background-position:-200% 0} }
 @keyframes ntg-tile-in   { from{opacity:0;transform:scale(.94) translateY(10px)} to{opacity:1;transform:scale(1) translateY(0)} }
@@ -59,10 +46,10 @@ const GCSS = `
 .ntg-skel::after {
   content: ''; position: absolute; inset: 0; border-radius: inherit;
   background-image: radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px);
-  background-size: 15px 15px;
+  background-size: 12px 12px;
 }
 .dark .ntg-skel::after {
-  background-image: radial-gradient(circle, rgba(255,255,255,0.022) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px);
 }
 
 /* ── Tile child-combinator hovers ── */
@@ -81,15 +68,15 @@ const GCSS = `
   transition: filter .55s cubic-bezier(.32,.72,0,1), transform .55s cubic-bezier(.32,.72,0,1);
 }
 
-/* ── Circuit dot-grid ── */
+/* ── Circuit dot-grid — light ── */
 .ntg-circuit {
   position: absolute; inset: 0;
-  background-image: radial-gradient(circle, rgba(0,0,0,0.055) 1px, transparent 1px);
-  background-size: 13px 13px;
+  background-image: radial-gradient(circle, rgba(0,0,0,0.07) 1px, transparent 1px);
+  background-size: 12px 12px;
   pointer-events: none; z-index: 1; transition: opacity .3s;
 }
 .dark .ntg-circuit {
-  background-image: radial-gradient(circle, rgba(255,255,255,0.038) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px);
 }
 
 /* ── Scan line ── */
@@ -151,9 +138,6 @@ const GCSS = `
 .ntg-tile-enter { animation: ntg-tile-in .32s cubic-bezier(.32,.72,0,1) both; }
 `
 
-/* ═══════════════════════════════════════════════════════════════
-   HELPERS
-═══════════════════════════════════════════════════════════════ */
 function fmtCount(n: number): string {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
     if (n >= 10_000)    return `${(n / 1_000).toFixed(0)}K`
@@ -161,7 +145,6 @@ function fmtCount(n: number): string {
     return String(n)
 }
 
-/* ── NDot 3×3 dot-matrix loader ── */
 const NothingLoader = () => (
     <div className="flex flex-col items-center justify-center py-16 gap-5">
         <div className="grid grid-cols-3 gap-[7px]">
@@ -179,15 +162,12 @@ const NothingLoader = () => (
     </div>
 )
 
-/* ── NDot section header ── */
 const SectionHeader = ({ count }: { count: number }) => (
     <div className="flex items-center justify-between pb-4 mb-3 border-b border-zinc-200 dark:border-zinc-800">
         <div className="flex items-center gap-2.5">
-            <div
-                className="w-2 h-2 rounded-full bg-red-600 shadow-[0_0_6px_rgba(255,0,0,0.5)]"
-                style={{ animation: "ntg-dot-blink 1.8s ease infinite" }}
-            />
-            <span className="font-mono text-[10px] font-bold tracking-[0.5em] uppercase text-zinc-600 dark:text-zinc-300">
+            <div className="w-2 h-2 rounded-full bg-red-600 shadow-[0_0_6px_rgba(255,0,0,0.5)]"
+                style={{ animation: "ntg-dot-blink 1.8s ease infinite" }} />
+            <span className="font-mono text-[8px] font-bold tracking-[0.3em] uppercase text-zinc-500 dark:text-zinc-400">
                 TRANSMISSIONS
             </span>
         </div>
@@ -197,9 +177,6 @@ const SectionHeader = ({ count }: { count: number }) => (
     </div>
 )
 
-/* ═══════════════════════════════════════════════════════════════
-   SKELETON GRID
-═══════════════════════════════════════════════════════════════ */
 const SkeletonGrid = () => (
     <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(3,1fr)", gridAutoRows: "auto" }}>
         <div className="ntg-skel aspect-square" style={{ gridColumn: "1/3", gridRow: "1/3" }} />
@@ -209,9 +186,6 @@ const SkeletonGrid = () => (
     </div>
 )
 
-/* ═══════════════════════════════════════════════════════════════
-   API — sends token if available
-═══════════════════════════════════════════════════════════════ */
 async function fetchUserPosts(userId: string, cursor?: string): Promise<{ posts: PostGridItem[]; nextCusor: string | null }> {
     const base  = process.env.NEXT_PUBLIC_API_BASE || "https://zynon.onrender.com/api/"
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
@@ -225,9 +199,6 @@ async function fetchUserPosts(userId: string, cursor?: string): Promise<{ posts:
     return { posts: json.data.posts ?? [], nextCusor: json.data.nextCusor ?? null }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   SINGLE BENTO TILE
-═══════════════════════════════════════════════════════════════ */
 const PostTile = ({
     post, index, featured = false, onClick,
 }: {
@@ -251,18 +222,14 @@ const PostTile = ({
             onClick={onClick}
             style={{ animationDelay: `${Math.min(index, 11) * 0.05}s` }}
         >
-            {/* Circuit dot texture */}
             <div className="ntg-circuit" />
-            {/* Red scan line */}
             <div className="ntg-scan" />
 
-            {/* Media */}
             {isVideo
-                ? <video src={firstMedia.url} muted playsInline preload="none" className="ntg-media" />
+                ? <video src={`${firstMedia.url}#t=0.001`} muted playsInline preload="metadata" className="ntg-media" />
                 : <img src={firstMedia?.url} alt={post.caption || "post"} loading="lazy" decoding="async" className="ntg-media" />
             }
 
-            {/* Glass stats overlay */}
             <div className="ntg-glass">
                 <div className="flex items-center gap-3.5">
                     <div className="ntg-stat flex items-center gap-1.5">
@@ -282,14 +249,12 @@ const PostTile = ({
                 </div>
             </div>
 
-            {/* Index chip — top left, shows on hover */}
             <div className="ntg-idx">
                 <span className="font-mono text-[8px] font-bold tracking-[0.15em] text-zinc-300">
                     #{String(index + 1).padStart(2, "0")}
                 </span>
             </div>
 
-            {/* Top-right badges */}
             <div className="absolute top-[11px] right-[11px] flex gap-1.5 z-[4] pointer-events-none">
                 {isVideo && (
                     <div className="flex items-center gap-1 bg-black/65 backdrop-blur-md border border-white/[0.09] rounded-lg px-1.5 py-0.5 text-white/80">
@@ -305,15 +270,11 @@ const PostTile = ({
                 )}
             </div>
 
-            {/* Red corner triangle */}
             <div className="ntg-corner" />
         </div>
     )
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   BENTO LAYOUT — asymmetric, 7-post chunks
-═══════════════════════════════════════════════════════════════ */
 const BentoGrid = ({
     posts, loadingMore, onTileClick,
 }: {
@@ -331,7 +292,6 @@ const BentoGrid = ({
 
                 return (
                     <div key={ci} className="flex flex-col gap-2">
-                        {/* 2×2 featured + 4 small tiles */}
                         <div className="grid gap-2" style={{ gridTemplateColumns: "2fr 1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
                             <div className="ntg-tile-enter" style={{ gridColumn: "1/2", gridRow: "1/3", aspectRatio: "1/1", animationDelay: `${ci * 0.04}s` }}>
                                 <PostTile post={featured} index={ci * 7} featured onClick={() => onTileClick(featured._id)} />
@@ -341,7 +301,6 @@ const BentoGrid = ({
                                     <PostTile post={post} index={ci * 7 + 1 + li} onClick={() => onTileClick(post._id)} />
                                 </div>
                             ))}
-                            {/* Placeholder slots */}
                             {Array.from({ length: Math.max(0, 4 - sideItems.length) }).map((_, pi) => (
                                 <div key={`ph-${pi}`} className="aspect-square rounded-[32px]
                                                                    bg-zinc-100 dark:bg-zinc-900
@@ -352,7 +311,6 @@ const BentoGrid = ({
                             ))}
                         </div>
 
-                        {/* Bottom flat row */}
                         {rowItems.length > 0 && (
                             <div className="grid grid-cols-3 gap-2">
                                 {rowItems.map((post, li) => (
@@ -377,21 +335,17 @@ const BentoGrid = ({
     )
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   EMPTY STATE
-═══════════════════════════════════════════════════════════════ */
 const EmptyState = () => (
     <div className="relative flex flex-col items-center justify-center py-20 px-8 gap-4 rounded-[40px] overflow-hidden
-                    bg-zinc-50 dark:bg-zinc-900/50
+                    bg-white dark:bg-[#0D0D0D]
                     border border-zinc-200 dark:border-zinc-800">
-        {/* Circuit texture — light */}
+        {/* Dot Matrix — light */}
         <div className="absolute inset-0 pointer-events-none rounded-[inherit] dark:hidden"
-            style={{ backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px)", backgroundSize: "14px 14px" }} />
-        {/* Circuit texture — dark */}
+            style={{ backgroundImage: "radial-gradient(circle, rgba(0,0,0,1) 1px, transparent 1px)", backgroundSize: "12px 12px", opacity: 0.04 }} />
+        {/* Dot Matrix — dark */}
         <div className="absolute inset-0 pointer-events-none rounded-[inherit] hidden dark:block"
-            style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.022) 1px, transparent 1px)", backgroundSize: "14px 14px" }} />
+            style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 1px, transparent 1px)", backgroundSize: "12px 12px", opacity: 0.055 }} />
 
-        {/* Dot-matrix icon */}
         <div className="relative w-14 h-14 rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
             <div className="grid grid-cols-4 gap-[3px] p-2.5">
                 {[1,1,1,1, 1,0,0,1, 1,0,0,1, 1,1,1,1].map((on, i) => (
@@ -401,7 +355,7 @@ const EmptyState = () => (
         </div>
 
         <div className="relative text-center">
-            <p className="font-mono text-[11px] font-bold tracking-[0.5em] uppercase text-zinc-900 dark:text-zinc-100 mb-2">
+            <p className="font-mono text-[8px] font-bold tracking-[0.3em] uppercase text-zinc-400 dark:text-zinc-500 mb-2">
                 NULL_TRANSMISSIONS
             </p>
             <p className="text-[13px] text-zinc-500 dark:text-zinc-500 leading-relaxed max-w-[220px] text-center">
@@ -409,26 +363,22 @@ const EmptyState = () => (
             </p>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-red-600 to-transparent opacity-50" />
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#FF0000]/40 to-transparent" />
     </div>
 )
 
-/* ═══════════════════════════════════════════════════════════════
-   PRIVATE WALL
-═══════════════════════════════════════════════════════════════ */
 const PrivateWall = ({ username }: { username?: string }) => (
     <div className="relative flex flex-col items-center justify-center py-20 px-8 gap-5 rounded-[40px] overflow-hidden
-                    bg-zinc-50 dark:bg-zinc-900/50
+                    bg-white dark:bg-[#0D0D0D]
                     border border-zinc-200 dark:border-zinc-800">
-        {/* Circuit texture — light */}
+        {/* Dot Matrix — light */}
         <div className="absolute inset-0 pointer-events-none rounded-[inherit] dark:hidden"
-            style={{ backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px)", backgroundSize: "14px 14px" }} />
-        {/* Circuit texture — dark */}
+            style={{ backgroundImage: "radial-gradient(circle, rgba(0,0,0,1) 1px, transparent 1px)", backgroundSize: "12px 12px", opacity: 0.04 }} />
+        {/* Dot Matrix — dark */}
         <div className="absolute inset-0 pointer-events-none rounded-[inherit] hidden dark:block"
-            style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.022) 1px, transparent 1px)", backgroundSize: "14px 14px" }} />
+            style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 1px, transparent 1px)", backgroundSize: "12px 12px", opacity: 0.055 }} />
 
-        {/* Lock icon with red ring pulse */}
-        <div className="ntg-lock relative w-16 h-16 rounded-[20px] bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
+        <div className="ntg-lock relative w-16 h-16 rounded-[20px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
                 className="text-red-600 drop-shadow-[0_0_6px_rgba(255,0,0,0.4)]"
                 stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -438,7 +388,7 @@ const PrivateWall = ({ username }: { username?: string }) => (
         </div>
 
         <div className="relative text-center">
-            <p className="font-mono text-[11px] font-bold tracking-[0.5em] uppercase text-zinc-900 dark:text-zinc-100 mb-2.5">
+            <p className="font-mono text-[8px] font-bold tracking-[0.3em] uppercase text-zinc-400 dark:text-zinc-500 mb-2.5">
                 ACCESS_RESTRICTED
             </p>
             <p className="text-[14px] text-zinc-500 dark:text-zinc-500 leading-relaxed max-w-[260px] text-center">
@@ -450,11 +400,10 @@ const PrivateWall = ({ username }: { username?: string }) => (
             </p>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-red-600 to-transparent opacity-45" />
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#FF0000]/40 to-transparent" />
     </div>
 )
 
-/* ── 3-dot load-more ── */
 const LoadMoreDots = () => (
     <div className="flex items-center justify-center gap-[7px] py-5">
         {[0, 1, 2].map(i => (
@@ -467,11 +416,7 @@ const LoadMoreDots = () => (
     </div>
 )
 
-/* ═══════════════════════════════════════════════════════════════
-   MAIN
-═══════════════════════════════════════════════════════════════ */
 export default function PublicPostsGrid({ userId, isPrivate = false, username }: PublicPostsGridProps) {
-
     const [posts,       setPosts]       = useState<PostGridItem[]>([])
     const [cursor,      setCursor]      = useState<string | null>(null)
     const [hasMore,     setHasMore]     = useState(false)
@@ -524,47 +469,34 @@ export default function PublicPostsGrid({ userId, isPrivate = false, username }:
                 <PostModal postId={openPostId} onClose={() => setOpenPostId(null)} />
             )}
 
-            {/* ── Outer Nothing OS container ── */}
-            <div className="relative rounded-[40px] p-6 overflow-hidden
-                            bg-zinc-50 dark:bg-[#0A0A0A]
-                            border border-zinc-200 dark:border-zinc-800">
+            {/* ── Outer container ── */}
+            <div className="relative rounded-[40px] p-6 overflow-hidden bg-white dark:bg-[#0D0D0D] border border-zinc-200 dark:border-zinc-800">
 
-                {/* Ambient circuit texture — light */}
+                {/* Dot Matrix — light */}
                 <div className="absolute inset-0 pointer-events-none rounded-[inherit] dark:hidden"
-                    style={{ backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.035) 1px, transparent 1px)", backgroundSize: "18px 18px" }} />
-                {/* Ambient circuit texture — dark */}
+                    style={{ backgroundImage: "radial-gradient(circle, rgba(0,0,0,1) 1px, transparent 1px)", backgroundSize: "12px 12px", opacity: 0.04 }} />
+                {/* Dot Matrix — dark */}
                 <div className="absolute inset-0 pointer-events-none rounded-[inherit] hidden dark:block"
-                    style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.016) 1px, transparent 1px)", backgroundSize: "18px 18px" }} />
+                    style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 1px, transparent 1px)", backgroundSize: "12px 12px", opacity: 0.055 }} />
 
-                {/* Red top-edge glow */}
-                <div className="absolute top-0 left-[15%] right-[15%] h-px bg-gradient-to-r from-transparent via-red-600 to-transparent opacity-40" />
+                {/* Red top-edge accent */}
+                <div className="absolute top-0 left-[15%] right-[15%] h-px bg-gradient-to-r from-transparent via-[#FF0000]/40 to-transparent" />
 
                 <div className="relative">
-                    {/* Section header */}
                     {!loading && !isPrivate && <SectionHeader count={posts.length} />}
-
                     {isPrivate && <PrivateWall username={username} />}
-
-                    {!isPrivate && loading && (
-                        <>
-                            <SkeletonGrid />
-                            <NothingLoader />
-                        </>
-                    )}
-
+                    {!isPrivate && loading && <><SkeletonGrid /><NothingLoader /></>}
                     {!isPrivate && !loading && posts.length === 0 && <EmptyState />}
-
                     {!isPrivate && posts.length > 0 && (
                         <BentoGrid posts={posts} loadingMore={loadingMore} onTileClick={setOpenPostId} />
                     )}
-
                     {!isPrivate && loadingMore && <LoadMoreDots />}
                 </div>
 
                 {!isPrivate && <div ref={sentinelRef} className="h-px mt-2" aria-hidden />}
 
-                {/* Red bottom-edge glow */}
-                <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-600 to-transparent opacity-30" />
+                {/* Red bottom-edge accent */}
+                <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#FF0000]/30 to-transparent" />
             </div>
         </>
     )
