@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { Phone, Video, MoreHorizontal, ChevronLeft, ArrowUp, Loader2, SmilePlus } from "lucide-react";
-import { getMessages, sendMessage, markMessagesSeen } from "../../lib/api/chatApi";
+import { getMessages, sendMessage, markMessagesSeen, addReaction } from "../../lib/api/chatApi";
 import { getSocket } from "../../lib/socket";
 
 interface Message {
@@ -399,6 +399,34 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                             <button
                                                 key={emoji}
                                                 className="w-7 h-7 flex items-center justify-center text-base hover:scale-125 transition-transform rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    // Optimistic update
+                                                    setMessages((prev) =>
+                                                        prev.map((m) =>
+                                                            m._id === msg._id
+                                                                ? {
+                                                                      ...m,
+                                                                      reactions: [
+                                                                          ...(m.reactions || []).filter((r) => r.userId !== currentUserId),
+                                                                          { userId: currentUserId, emoji },
+                                                                      ],
+                                                                  }
+                                                                : m
+                                                        )
+                                                    );
+                                                    setHoveredMsg(null);
+                                                    addReaction(msg._id, emoji).catch(() => {
+                                                        // Revert on failure
+                                                        setMessages((prev) =>
+                                                            prev.map((m) =>
+                                                                m._id === msg._id
+                                                                    ? { ...m, reactions: (m.reactions || []).filter((r) => r.userId !== currentUserId) }
+                                                                    : m
+                                                            )
+                                                        );
+                                                    });
+                                                }}
                                             >
                                                 {emoji}
                                             </button>
