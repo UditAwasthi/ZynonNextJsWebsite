@@ -14,7 +14,7 @@ export function proxy(request: NextRequest) {
   }
 
   // Protect everything except auth routes
-  const publicRoutes = ["/login", "/signup", "/register", "/forgot"]
+  const publicRoutes = ["/login", "/signup", "/register", "/forgot","/createProfile"]
   const isPublic = publicRoutes.some(route => pathname.startsWith(route))
 
   if (!token && !isPublic) {
