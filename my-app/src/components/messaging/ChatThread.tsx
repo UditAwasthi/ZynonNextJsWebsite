@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { Phone, Video, MoreHorizontal, ChevronLeft, ArrowUp, Loader2, SmilePlus } from "lucide-react";
-import { getMessages, sendMessage, markMessagesSeen, addReaction } from "../../lib/api/chatApi";
+import { Phone, Video, MoreHorizontal, ChevronLeft, ArrowUp, Loader2, SmilePlus, Paperclip, X, FileIcon } from "lucide-react";
+import { getMessages, sendMessage, markMessagesSeen, addReaction, uploadChatMedia } from "../../lib/api/chatApi";
 import { getSocket } from "../../lib/socket";
 
 interface Message {
@@ -13,6 +13,17 @@ interface Message {
     seenBy: string[];
     deliveredTo: string[];
     reactions: { userId: string; emoji: string }[];
+    mediaUrl?: string;
+    mediaType?: "image" | "video" | "audio" | "file";
+    mediaMeta?: { width?: number; height?: number; duration?: number; size?: number };
+    type?: "text" | "media";
+}
+
+interface MediaAttachment {
+    file: File;
+    previewUrl: string;
+    mediaType: "image" | "video" | "audio" | "file";
+    uploadProgress: number;
 }
 
 interface Thread {
@@ -50,6 +61,9 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
     const [loadingMore, setLoadingMore] = useState(false);
     const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
     const [newMsgIds, setNewMsgIds] = useState<Set<string>>(new Set());
+    const [attachment, setAttachment] = useState<MediaAttachment | null>(null);
+    const [uploading, setUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -180,10 +194,30 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
         }
     };
 
+    // ── Handle file pick ─────────────────────────────────────────────────────
+    const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const mediaType = file.type.startsWith("image/") ? "image"
+            : file.type.startsWith("video/") ? "video"
+            : file.type.startsWith("audio/") ? "audio"
+            : "file";
+        const previewUrl = mediaType === "image" || mediaType === "video"
+            ? URL.createObjectURL(file) : "";
+        setAttachment({ file, previewUrl, mediaType, uploadProgress: 0 });
+        // reset so same file can be re-picked
+        e.target.value = "";
+    };
+
+    const clearAttachment = () => {
+        if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+        setAttachment(null);
+    };
+
     // ── Send message ──────────────────────────────────────────────────────────
     const handleSend = async (e?: React.FormEvent) => {
         e?.preventDefault();
-        if (!inputValue.trim() || sending) return;
+        if ((!inputValue.trim() && !attachment) || sending || uploading) return;
         const content = inputValue.trim();
         setInputValue("");
 
@@ -197,32 +231,46 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
             seenBy: [],
             deliveredTo: [],
             reactions: [],
+            mediaUrl: attachment?.previewUrl,
+            mediaType: attachment?.mediaType,
+            type: attachment ? "media" : "text",
         };
         setMessages((prev) => [...prev, optimistic]);
         setNewMsgIds((prev) => new Set(prev).add(tempId));
 
+        const pendingAttachment = attachment;
+        clearAttachment();
+
         try {
             setSending(true);
-            const res = await sendMessage(thread.threadId, content);
+            let mediaPayload: { mediaUrl: string; mediaType: string; mediaMeta?: object } | undefined;
+
+            if (pendingAttachment) {
+                setUploading(true);
+                const uploaded = await uploadChatMedia(pendingAttachment.file, (pct) => {
+                    setAttachment((prev) => prev ? { ...prev, uploadProgress: pct } : null);
+                });
+                setUploading(false);
+                mediaPayload = { mediaUrl: uploaded.url, mediaType: uploaded.mediaType, mediaMeta: uploaded.mediaMeta };
+            }
+
+            const res = await sendMessage(thread.threadId, content, mediaPayload);
             const real: Message = res.data?.data;
             if (real?._id) {
-                // Register this ID so the socket handler knows to skip it
                 ownedMessageIds.current.add(real._id);
-                // Replace the optimistic bubble; also remove any dupe that socket may have added
                 setMessages((prev) => {
                     const withoutDupes = prev.filter((m) => m._id !== real._id);
                     return withoutDupes.map((m) => (m._id === tempId ? real : m));
                 });
             } else {
-                // Fallback: remove temp and let socket deliver the real message
                 setMessages((prev) => prev.filter((m) => m._id !== tempId));
             }
         } catch (err) {
             console.error("Failed to send message", err);
-            // Remove optimistic bubble on failure
             setMessages((prev) => prev.filter((m) => m._id !== tempId));
         } finally {
             setSending(false);
+            setUploading(false);
         }
     };
 
@@ -436,21 +484,62 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
 
                                 {/* Bubble */}
                                 <div
-                                    className={`px-3.5 py-2.5 text-[14px] leading-relaxed transition-opacity ${isTemp ? "opacity-50" : "opacity-100"} ${
-                                        isMine
-                                            ? "bg-black text-white dark:bg-white dark:text-black"
-                                            : "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                                    className={`text-[14px] leading-relaxed transition-opacity overflow-hidden ${isTemp ? "opacity-50" : "opacity-100"} ${
+                                        msg.mediaUrl && !msg.content
+                                            ? "p-0 bg-transparent"
+                                            : isMine
+                                                ? "px-3.5 py-2.5 bg-black text-white dark:bg-white dark:text-black"
+                                                : "px-3.5 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
                                     }`}
                                     style={{
                                         borderRadius: isMine ? myRadius : theirRadius,
                                         wordBreak: "break-word",
                                     }}
                                 >
-                                    {msg.content}
+                                    {/* Media rendering */}
+                                    {msg.mediaUrl && msg.mediaType === "image" && (
+                                        <img
+                                            src={msg.mediaUrl}
+                                            alt="media"
+                                            className="max-w-[260px] max-h-[320px] rounded-[inherit] object-cover block"
+                                            style={{ borderRadius: isMine ? myRadius : theirRadius }}
+                                        />
+                                    )}
+                                    {msg.mediaUrl && msg.mediaType === "video" && (
+                                        <video
+                                            src={msg.mediaUrl}
+                                            controls
+                                            className="max-w-[260px] max-h-[320px] rounded-[inherit] block"
+                                            style={{ borderRadius: isMine ? myRadius : theirRadius }}
+                                        />
+                                    )}
+                                    {msg.mediaUrl && msg.mediaType === "audio" && (
+                                        <div className={`px-3.5 py-2.5 ${isMine ? "bg-black dark:bg-white" : "bg-zinc-100 dark:bg-zinc-800"}`}
+                                            style={{ borderRadius: isMine ? myRadius : theirRadius }}>
+                                            <audio src={msg.mediaUrl} controls className="w-[220px] h-8" />
+                                        </div>
+                                    )}
+                                    {msg.mediaUrl && msg.mediaType === "file" && (
+                                        <a
+                                            href={msg.mediaUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className={`flex items-center gap-2 px-3.5 py-2.5 ${isMine ? "bg-black text-white dark:bg-white dark:text-black" : "bg-zinc-100 dark:bg-zinc-800"}`}
+                                            style={{ borderRadius: isMine ? myRadius : theirRadius }}
+                                        >
+                                            <FileIcon size={16} className="shrink-0" />
+                                            <span className="text-[13px] truncate max-w-[180px]">Download file</span>
+                                        </a>
+                                    )}
+
+                                    {/* Text content (can accompany media) */}
+                                    {msg.content && (
+                                        <p className={msg.mediaUrl ? "px-3.5 pt-2 pb-2.5" : ""}>{msg.content}</p>
+                                    )}
 
                                     {/* Inline reactions */}
                                     {(msg.reactions?.length > 0) && (
-                                        <div className="flex gap-0.5 mt-1.5 flex-wrap">
+                                        <div className={`flex gap-0.5 mt-1.5 flex-wrap ${msg.mediaUrl && !msg.content ? "px-3.5 pb-2" : ""}`}>
                                             {msg.reactions.map((r, ri) => (
                                                 <span key={ri} className="text-xs bg-white/20 dark:bg-black/20 rounded-full px-1 py-0.5">{r.emoji}</span>
                                             ))}
@@ -500,18 +589,75 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
             </div>
 
             {/* ── Input ── */}
-            <div className="relative z-10 px-4 py-3 border-t border-zinc-100 dark:border-zinc-800/60 bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-xl shrink-0">
-                <div className="flex items-center gap-2">
+            <div className="relative z-10 border-t border-zinc-100 dark:border-zinc-800/60 bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-xl shrink-0">
+
+                {/* Attachment preview */}
+                {attachment && (
+                    <div className="px-4 pt-3 pb-1 flex items-center gap-3">
+                        <div className="relative">
+                            {attachment.mediaType === "image" && attachment.previewUrl && (
+                                <img src={attachment.previewUrl} alt="preview" className="w-16 h-16 rounded-xl object-cover border border-zinc-200 dark:border-zinc-700" />
+                            )}
+                            {attachment.mediaType === "video" && attachment.previewUrl && (
+                                <video src={attachment.previewUrl} className="w-16 h-16 rounded-xl object-cover border border-zinc-200 dark:border-zinc-700" />
+                            )}
+                            {(attachment.mediaType === "audio" || attachment.mediaType === "file") && (
+                                <div className="w-16 h-16 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex flex-col items-center justify-center border border-zinc-200 dark:border-zinc-700">
+                                    <FileIcon size={20} className="text-zinc-500" />
+                                    <span className="text-[9px] text-zinc-400 mt-1 uppercase tracking-wide">{attachment.mediaType}</span>
+                                </div>
+                            )}
+                            <button
+                                onClick={clearAttachment}
+                                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-zinc-800 dark:bg-white text-white dark:text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform"
+                            >
+                                <X size={10} strokeWidth={3} />
+                            </button>
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-[11px] font-semibold text-black dark:text-white truncate max-w-[200px]">{attachment.file.name}</p>
+                            <p className="text-[10px] text-zinc-400 mt-0.5">{(attachment.file.size / 1024).toFixed(0)} KB</p>
+                            {uploading && (
+                                <div className="mt-1.5 h-1 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden w-32">
+                                    <div
+                                        className="h-full bg-black dark:bg-white rounded-full transition-all duration-150"
+                                        style={{ width: `${attachment.uploadProgress}%` }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                <div className="px-4 py-3 flex items-center gap-2">
+                    {/* Hidden file input */}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.zip"
+                        className="hidden"
+                        onChange={handleFilePick}
+                    />
+
+                    {/* Attach button */}
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all shrink-0"
+                    >
+                        <Paperclip size={17} strokeWidth={2} />
+                    </button>
+
                     <div className="flex-1 flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800/80 rounded-full px-4 py-2.5 border border-transparent focus-within:border-zinc-300 dark:focus-within:border-zinc-600 transition-all">
                         <input
                             type="text"
                             value={inputValue}
                             onChange={handleTyping}
                             onKeyDown={handleKeyDown}
-                            placeholder={`Message ${username}...`}
+                            placeholder={attachment ? "Add a caption..." : `Message ${username}...`}
                             className="flex-1 bg-transparent outline-none text-sm text-black dark:text-white placeholder:text-zinc-400"
                         />
-                        {!inputValue && (
+                        {!inputValue && !attachment && (
                             <button className="text-zinc-400 hover:text-black dark:hover:text-white transition-colors shrink-0">
                                 <SmilePlus size={16} />
                             </button>
@@ -520,14 +666,14 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
 
                     <button
                         onClick={() => handleSend()}
-                        disabled={!inputValue.trim() || sending}
+                        disabled={(!inputValue.trim() && !attachment) || sending || uploading}
                         className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                            inputValue.trim() && !sending
+                            (inputValue.trim() || attachment) && !sending && !uploading
                                 ? "bg-black dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 shadow-md"
                                 : "bg-zinc-200 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
                         }`}
                     >
-                        {sending
+                        {sending || uploading
                             ? <Loader2 size={15} className="animate-spin" />
                             : <ArrowUp size={15} strokeWidth={2.5} />
                         }
