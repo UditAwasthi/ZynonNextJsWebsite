@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react"
 import { MapPin, Globe, Lock, Edit3, Share2, ShieldCheck, RefreshCw } from "lucide-react"
 import Link from "next/link"
 import api from "../../lib/api/api"
+import { cache, TTL } from "../../lib/cache"
 
 /* ─── TYPES ─── */
 export interface ProfileUser {
@@ -21,57 +22,53 @@ export interface ProfileUser {
     postsCount: number
     createdAt: string
     user: {
-        _id: string       // ← add this
+        _id: string
         username: string
         email?: string
     }
 }
 
-/* ─── CACHE ─── */
-const CACHE_KEY = "zynon:profile:me"
-const CACHE_TTL = 60_000
+const CACHE_KEY = "profile:me"
 
-export function readCache(): ProfileUser | null {
-    try {
-        const raw = localStorage.getItem(CACHE_KEY)
-        if (!raw) return null
-        const { data, ts } = JSON.parse(raw)
-        if (Date.now() - ts > CACHE_TTL) return null
-        return data
-    } catch { return null }
-}
-
-export function writeCache(data: ProfileUser) {
-    try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }))
-    } catch { }
-}
-
-/* ─── HOOK — export so ProfileStats can reuse same cache ─── */
+/* ─── HOOK ─── */
 export function useProfile() {
-    const [profile, setProfile] = useState<ProfileUser | null>(null)
+    const [profile, setProfile]     = useState<ProfileUser | null>(null)
     const [refreshing, setRefreshing] = useState(false)
     const mounted = useRef(true)
 
     const fetch = useCallback(async (silent = false) => {
         if (!silent) setRefreshing(true)
         try {
-            const res = await api.get("/profile/me")
+            const res  = await api.get("/profile/me")
             const data: ProfileUser = res.data.data
-            if (mounted.current) { setProfile(data); writeCache(data) }
+            if (!mounted.current) return
+            setProfile(data)
+            cache.set(CACHE_KEY, data, TTL.PROFILE)
         } catch { }
         finally { if (mounted.current) setRefreshing(false) }
     }, [])
 
     useEffect(() => {
         mounted.current = true
-        const cached = readCache()
-        if (cached) setProfile(cached)
-        fetch(!!cached)
+
+        // Show stale data instantly — renders the page with no skeleton
+        const stale = cache.getStale<ProfileUser>(CACHE_KEY)
+        if (stale) {
+            setProfile(stale)
+            fetch(true)   // silent background refresh
+        } else {
+            fetch(false)  // first load — show spinner
+        }
+
         return () => { mounted.current = false }
     }, [fetch])
 
     return { profile, refreshing, refetch: () => fetch(false) }
+}
+
+/* Exported so ProfileStatGrid can update the cached counts without refetching */
+export function patchProfileCache(patch: Partial<ProfileUser>) {
+    cache.patch<ProfileUser>(CACHE_KEY, patch)
 }
 
 /* ─── DOT GRID ─── */
@@ -149,7 +146,6 @@ export function ProfileHeader() {
                                 {profile.isPrivate ? "Private" : "Public"}
                             </span>
                             <span className="w-1 h-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-
                             <span className="text-[9px] font-bold uppercase tracking-[0.3em] text-zinc-400">
                                 User Since {new Date(profile.createdAt).getFullYear()}
                             </span>
@@ -163,7 +159,6 @@ export function ProfileHeader() {
                         </p>
                     </div>
 
-                    {/* Utility row */}
                     <div className="flex flex-wrap items-center justify-between gap-y-5 pt-6 border-t border-zinc-100 dark:border-zinc-800/60">
                         <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
                             {profile.location && (

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Layers, Users, ArrowUpRight } from "lucide-react"
-import { useProfile, writeCache } from "./ProfileHeader"
+import { useProfile, patchProfileCache } from "./ProfileHeader"
 import FollowListModal from "./FollowListModal"
 
 /* ─── SKELETON ─── */
@@ -28,9 +28,8 @@ const DotGrid = () => (
 
 /* ─── PROFILE STATS ─── */
 export function ProfileStats() {
-    const { profile, refetch } = useProfile()
+    const { profile } = useProfile()
     const [modal, setModal] = useState<"followers" | "following" | null>(null)
-    // Local overrides for optimistic counter updates
     const [followersDelta, setFollowersDelta] = useState(0)
     const [followingDelta, setFollowingDelta] = useState(0)
 
@@ -38,22 +37,15 @@ export function ProfileStats() {
 
     const userId = (profile.user as any)?._id ?? null
 
-    // Called by FollowListModal when a follow/unfollow happens inside it
-    // mode tells us whether the modal was showing followers or following list
     const handleFollowChange = (delta: number, mode: "followers" | "following") => {
-        if (mode === "followers") {
-            setFollowersDelta(prev => prev + delta)
-        } else {
-            setFollowingDelta(prev => prev + delta)
-        }
+        if (mode === "followers") setFollowersDelta(prev => prev + delta)
+        else setFollowingDelta(prev => prev + delta)
 
-        // Update cache so counters survive re-renders without a refetch
-        const updated = {
-            ...profile,
+        // Patch the cache so counts survive re-renders without a refetch
+        patchProfileCache({
             followersCount: profile.followersCount + followersDelta + (mode === "followers" ? delta : 0),
-            followingCount: profile.followingCount + followingDelta + (mode === "following" ? delta : 0),
-        }
-        writeCache(updated)
+            followingCount: profile.followingCount + followingDelta + (mode === "following"  ? delta : 0),
+        })
     }
 
     const stats = [

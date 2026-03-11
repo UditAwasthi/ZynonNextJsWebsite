@@ -38,7 +38,7 @@ export function useUploadStore() {
 }
 
 /* ─── OVERLAY WIDGET ─── */
-export function UploadOverlay() {
+export function UploadProgressWidget() {
     const { state, dismiss } = useUploadStore()
 
     if (!state.visible) return null

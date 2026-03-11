@@ -1,56 +1,48 @@
-import { useState, useEffect } from "react";
-import api from "../lib/api/api";
+import { useState, useEffect, useCallback, useRef } from "react"
+import api from "../lib/api/api"
+import { cache, TTL } from "../lib/cache"
 
-const CACHE_KEY = "zynon:profile:me";
-const CACHE_TTL = 60_000;
-
-function readCache() {
-    try {
-        const raw = localStorage.getItem(CACHE_KEY);
-        if (!raw) return null;
-        const { data, ts } = JSON.parse(raw);
-        if (Date.now() - ts > CACHE_TTL) return null;
-        return data;
-    } catch { return null; }
-}
-
-function writeCache(data: any) {
-    try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }));
-    } catch { }
-}
+const CACHE_KEY = "profile:me"
 
 export function useProfile() {
-    // 👇 Always start as null/true on server AND client first render
-    const [user, setUser] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [user, setUser]       = useState<any>(null)
+    const [loading, setLoading] = useState(true)
+    const [error, setError]     = useState<string | null>(null)
+    const mounted = useRef(true)
 
-    const refreshProfile = async (silent = false) => {
+    const refreshProfile = useCallback(async (silent = false) => {
+        if (!silent) setLoading(true)
         try {
-            if (!silent) setLoading(true);
-            const res = await api.get("profile/me");
-            const data = res.data.data;
-            setUser(data);
-            writeCache(data);
+            const res  = await api.get("profile/me")
+            const data = res.data.data
+            if (!mounted.current) return
+            setUser(data)
+            setError(null)
+            cache.set(CACHE_KEY, data, TTL.PROFILE)
         } catch (err: any) {
-            setError(err.response?.data?.message || "Failed to sync profile");
+            if (!mounted.current) return
+            setError(err.response?.data?.message || "Failed to sync profile")
         } finally {
-            setLoading(false);
+            if (mounted.current) setLoading(false)
         }
-    };
+    }, [])
 
     useEffect(() => {
-        // 👇 Only runs client-side, after hydration is complete
-        const cached = readCache();
-        if (cached) {
-            setUser(cached);
-            setLoading(false);
-            refreshProfile(true); // silent background refresh
-        } else {
-            refreshProfile(false);
-        }
-    }, []);
+        mounted.current = true
 
-    return { user, loading, error, refreshProfile };
+        // Show stale data instantly (even if expired) so UI renders immediately
+        const stale = cache.getStale(CACHE_KEY)
+        if (stale) {
+            setUser(stale)
+            setLoading(false)
+            // Refresh in background without showing loading state
+            refreshProfile(true)
+        } else {
+            refreshProfile(false)
+        }
+
+        return () => { mounted.current = false }
+    }, [refreshProfile])
+
+    return { user, loading, error, refreshProfile: () => refreshProfile(false) }
 }
