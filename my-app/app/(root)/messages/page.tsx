@@ -6,6 +6,8 @@ import InboxList from "../../../src/components/messaging/InboxList";
 import ChatThread from "../../../src/components/messaging/ChatThread";
 import { useUnread } from "../../../src/hooks/useUnread";
 import { getAccessToken, getCurrentUserId } from "../../../src/lib/auth";
+import { getInbox } from "../../../src/lib/api/chatApi";
+import { DM_HANDOFF_KEY } from "../../../src/components/messaging/MessageButton";
 
 interface Thread {
     threadId: string;
@@ -30,10 +32,45 @@ export default function DirectPage() {
         setCurrentUserId(getCurrentUserId());
     }, []);
 
-    // ✅ MUST be before any early return
+    // On mount, check if MessageButton left a pending thread to open
+    useEffect(() => {
+        if (!token) return;
+
+        const pendingId = sessionStorage.getItem(DM_HANDOFF_KEY);
+        if (!pendingId) return;
+
+        // Clear immediately so a refresh doesn't re-open it
+        sessionStorage.removeItem(DM_HANDOFF_KEY);
+
+        const resolveThread = async () => {
+            try {
+                const res = await getInbox();
+                const threads: Thread[] = res.data?.data ?? [];
+                // Inbox threads use threadId which equals the thread _id
+                const match = threads.find((t) => t.threadId === pendingId);
+                if (match) {
+                    setSelectedThread(match);
+                } else {
+                    // Thread exists but not in inbox yet (brand new) — use shell
+                    setSelectedThread({
+                        threadId: pendingId,
+                        type: "dm",
+                        user: null,
+                        lastMessage: null,
+                        lastActivity: new Date().toISOString(),
+                    });
+                }
+            } catch {
+                // Non-fatal — user can pick from inbox manually
+            }
+        };
+
+        resolveThread();
+    }, [token]);
+
+    // ✅ hooks before any early return
     const { unreadMap, clearUnread } = useUnread(token);
 
-    // ✅ early return comes AFTER all hooks
     if (!token || !currentUserId) return null;
 
     const handleSelect = (thread: Thread) => {
@@ -43,7 +80,7 @@ export default function DirectPage() {
 
     return (
         <div className="flex h-screen bg-white dark:bg-black overflow-hidden">
-            {/* Sidebar — Inbox List */}
+            {/* Sidebar */}
             <div
                 className={`w-full md:w-[350px] lg:w-[400px] border-r border-zinc-300 dark:border-zinc-800 flex-shrink-0 transition-all ${
                     selectedThread ? "hidden md:flex" : "flex"

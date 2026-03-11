@@ -7,7 +7,7 @@ import { PublicProfileStats } from "./PublicProfileStats"
 import { swr, cache } from "../../lib/cache"
 import FollowListModal from "./FollowListModal"
 import PublicPostsGrid from "./PublicPostsGrid"
-
+import MessageButton from "../messaging/MessageButton"
 /* ─── TYPES ─── */
 interface ProfileUser {
     _id: string
@@ -186,6 +186,8 @@ export default function PublicProfileView({ username }: { username: string }) {
                             userId={profile.user._id}
                             onFollowChange={handleFollowChange}
                         />
+
+                        <MessageButton userId={profile.user._id} />
                     </div>
 
                     {/* Info column */}

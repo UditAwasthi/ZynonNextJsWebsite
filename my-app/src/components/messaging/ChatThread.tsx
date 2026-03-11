@@ -53,6 +53,8 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Track real message IDs we already inserted via API response — skip them in socket handler
+    const ownedMessageIds = useRef<Set<string>>(new Set());
     const username = thread.user?.username || "Unknown";
 
     // ── Load initial messages ─────────────────────────────────────────────────
@@ -93,7 +95,16 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
         socket.emit("join_thread", thread.threadId);
 
         socket.on("new_message", (msg: Message) => {
-            setMessages((prev) => [...prev, msg]);
+            setMessages((prev) => {
+                // Already in list (exact ID match) — skip
+                if (prev.some((m) => m._id === msg._id)) return prev;
+                // We sent this — replace our optimistic/real copy rather than appending
+                if (ownedMessageIds.current.has(msg._id)) {
+                    ownedMessageIds.current.delete(msg._id);
+                    return prev;
+                }
+                return [...prev, msg];
+            });
             setNewMsgIds((prev) => new Set(prev).add(msg._id));
             setTimeout(() => {
                 setNewMsgIds((prev) => {
@@ -192,10 +203,23 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
 
         try {
             setSending(true);
-            await sendMessage(thread.threadId, content);
-            setMessages((prev) => prev.filter((m) => m._id !== tempId));
+            const res = await sendMessage(thread.threadId, content);
+            const real: Message = res.data?.data;
+            if (real?._id) {
+                // Register this ID so the socket handler knows to skip it
+                ownedMessageIds.current.add(real._id);
+                // Replace the optimistic bubble; also remove any dupe that socket may have added
+                setMessages((prev) => {
+                    const withoutDupes = prev.filter((m) => m._id !== real._id);
+                    return withoutDupes.map((m) => (m._id === tempId ? real : m));
+                });
+            } else {
+                // Fallback: remove temp and let socket deliver the real message
+                setMessages((prev) => prev.filter((m) => m._id !== tempId));
+            }
         } catch (err) {
             console.error("Failed to send message", err);
+            // Remove optimistic bubble on failure
             setMessages((prev) => prev.filter((m) => m._id !== tempId));
         } finally {
             setSending(false);
