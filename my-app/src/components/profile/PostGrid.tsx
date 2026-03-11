@@ -122,8 +122,8 @@ const GCSS = `
 
 function fmtCount(n: number): string {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-    if (n >= 10_000)    return `${(n / 1_000).toFixed(0)}K`
-    if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K`
+    if (n >= 10_000) return `${(n / 1_000).toFixed(0)}K`
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
     return String(n)
 }
 
@@ -184,9 +184,9 @@ const PostTile = ({ post, index, featured = false, onClick }: {
     post: Post; index: number; featured?: boolean; onClick: () => void
 }) => {
     const firstMedia = post.media[0]
-    const isVideo    = firstMedia?.type === "video"
-    const isMulti    = post.media.length > 1
-    const statSz     = featured ? 14 : 12
+    const isVideo = firstMedia?.type === "video"
+    const isMulti = post.media.length > 1
+    const statSz = featured ? 14 : 12
 
     return (
         <div
@@ -203,7 +203,7 @@ const PostTile = ({ post, index, featured = false, onClick }: {
             <div className="ntg-circuit" />
             <div className="ntg-scan" />
             {isVideo
-                ? <video src={firstMedia.url} muted playsInline preload="none" className="ntg-media" />
+                ? <video src={`${firstMedia.url}#t=0.001`} muted playsInline preload="metadata" className="ntg-media" />
                 : <img src={firstMedia?.url} alt={post.caption || "post"} loading="lazy" decoding="async" className="ntg-media" />
             }
             <div className="ntg-glass">
@@ -265,9 +265,9 @@ const BentoGrid = ({ posts, loadingMore, onTileClick }: {
     return (
         <div className="flex flex-col gap-2">
             {chunks.map((chunk, ci) => {
-                const featured  = chunk[0]
+                const featured = chunk[0]
                 const sideItems = chunk.slice(1, 5)
-                const rowItems  = chunk.slice(5)
+                const rowItems = chunk.slice(5)
                 return (
                     <div key={ci} className="flex flex-col gap-2">
                         <div className="grid gap-2" style={{ gridTemplateColumns: "2fr 1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
@@ -315,7 +315,7 @@ const EmptyState = () => (
             style={{ backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px)", backgroundSize: "14px 14px" }} />
         <div className="relative w-14 h-14 rounded-2xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">
             <div className="grid grid-cols-4 gap-[3px] p-2.5">
-                {[1,1,1,1, 1,0,0,1, 1,0,0,1, 1,1,1,1].map((on, i) => (
+                {[1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1].map((on, i) => (
                     <div key={i} className={`w-1 h-1 rounded-full ${on ? "bg-zinc-400" : "bg-transparent"}`} />
                 ))}
             </div>
@@ -341,18 +341,18 @@ const LoadMoreDots = () => (
 
 /* ═══ MAIN ═══════════════════════════════════════════════════════ */
 export default function PostGrid({ userId }: PostGridProps) {
-    const [posts,          setPosts]          = useState<Post[]>([])
-    const [loading,        setLoading]        = useState(true)
-    const [loadingMore,    setLoadingMore]    = useState(false)
-    const [cursor,         setCursor]         = useState<string | undefined>()
-    const [hasMore,        setHasMore]        = useState(true)
+    const [posts, setPosts] = useState<Post[]>([])
+    const [loading, setLoading] = useState(true)
+    const [loadingMore, setLoadingMore] = useState(false)
+    const [cursor, setCursor] = useState<string | undefined>()
+    const [hasMore, setHasMore] = useState(true)
     const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
     const observerRef = useRef<IntersectionObserver | null>(null)
     const sentinelRef = useRef<HTMLDivElement | null>(null)
 
     const fetchPosts = useCallback(async (nextCursor?: string) => {
         const cacheKey = postCacheKey(userId, nextCursor)
-        const isFirst  = !nextCursor
+        const isFirst = !nextCursor
 
         try {
             // 1. Show stale data instantly on first load
@@ -405,46 +405,90 @@ export default function PostGrid({ userId }: PostGridProps) {
 
     // loading=true only when there's no stale data to show
     const showSkeleton = loading && posts.length === 0
-
     return (
         <>
             <style>{GCSS}</style>
-            <div className="relative rounded-[40px] p-6 overflow-hidden bg-zinc-50 dark:bg-[#0A0A0A] border border-zinc-200 dark:border-zinc-800">
-                <div className="absolute inset-0 pointer-events-none rounded-[inherit] dark:hidden"
-                    style={{ backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px)", backgroundSize: "18px 18px" }} />
-                <div className="absolute inset-0 pointer-events-none rounded-[inherit] hidden dark:block"
-                    style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.016) 1px, transparent 1px)", backgroundSize: "18px 18px" }} />
-                <div className="absolute top-0 left-[15%] right-[15%] h-px bg-gradient-to-r from-transparent via-red-600 to-transparent opacity-40" />
 
-                <div className="relative">
+            {/* Main Bento Container — soft squircle preserved */}
+            <div className="relative rounded-[48px] p-8 md:p-10 overflow-hidden bg-white dark:bg-[#0D0D0D] border border-zinc-200 dark:border-zinc-800 transition-all duration-500 shadow-lg dark:shadow-2xl">
+
+                {/* Dot Matrix — light */}
+                <div
+                    className="absolute inset-0 pointer-events-none opacity-[0.04] dark:hidden"
+                    style={{
+                        backgroundImage: "radial-gradient(circle, rgba(0,0,0,1) 1px, transparent 1px)",
+                        backgroundSize: "12px 12px",
+                    }}
+                />
+                {/* Dot Matrix — dark */}
+                <div
+                    className="absolute inset-0 pointer-events-none opacity-[0.055] hidden dark:block"
+                    style={{
+                        backgroundImage: "radial-gradient(circle, rgba(255,255,255,1) 1px, transparent 1px)",
+                        backgroundSize: "12px 12px",
+                    }}
+                />
+
+                {/* Red accent lines — kept exactly as-is */}
+                <div className="absolute top-0 left-[20%] right-[20%] h-px bg-gradient-to-r from-transparent via-[#FF0000]/40 to-transparent" />
+                <div className="absolute bottom-0 left-[20%] right-[20%] h-px bg-gradient-to-r from-transparent via-[#FF0000]/20 to-transparent" />
+
+                <div className="relative z-10">
+                    {/* 1. Loading State */}
                     {showSkeleton && (
-                        <>
-                            <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(3,1fr)", gridAutoRows: "auto" }}>
-                                <div className="ntg-skel-light dark:ntg-skel-dark aspect-square" style={{ gridColumn: "1/3", gridRow: "1/3" }} />
+                        <div className="space-y-8">
+                            <div className="flex items-center gap-3 opacity-40">
+                                <div className="w-2 h-2 rounded-full bg-[#FF0000] animate-pulse" />
+                                <span className="text-[8px] font-bold uppercase tracking-[0.3em] dark:text-white">Retrieving_Data...</span>
+                            </div>
+                            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(3,1fr)", gridAutoRows: "auto" }}>
+                                <div className="ntg-skel-light dark:ntg-skel-dark rounded-[32px] aspect-square" style={{ gridColumn: "1/3", gridRow: "1/3" }} />
                                 {[0, 1, 2, 3, 4].map(i => (
-                                    <div key={i} className="ntg-skel-light dark:ntg-skel-dark aspect-square" style={{ animationDelay: `${i * 0.09}s` }} />
+                                    <div key={i} className="ntg-skel-light dark:ntg-skel-dark rounded-[24px] aspect-square" style={{ animationDelay: `${i * 0.1}s` }} />
                                 ))}
                             </div>
                             <NothingLoader />
-                        </>
+                        </div>
                     )}
 
-                    {!showSkeleton && posts.length === 0 && <EmptyState />}
+                    {/* 2. Empty State */}
+                    {!showSkeleton && posts.length === 0 && (
+                        <div className="py-20">
+                            <EmptyState />
+                        </div>
+                    )}
 
+                    {/* 3. Grid */}
                     {posts.length > 0 && (
-                        <>
-                            <SectionHeader count={posts.length} />
-                            <BentoGrid posts={posts} loadingMore={loadingMore} onTileClick={setSelectedPostId} />
-                        </>
+                        <div className="space-y-10">
+                            <div className="flex items-end justify-between border-b border-zinc-100 dark:border-zinc-900 pb-6">
+                                <SectionHeader count={posts.length} />
+                                <div className="text-[8px] font-bold uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">
+                                    Archive_v3.0
+                                </div>
+                            </div>
+
+                            <BentoGrid
+                                posts={posts}
+                                loadingMore={loadingMore}
+                                onTileClick={setSelectedPostId}
+                            />
+                        </div>
                     )}
 
-                    {loadingMore && <LoadMoreDots />}
+                    {/* 4. Infinite Scroll Indicator */}
+                    {loadingMore && (
+                        <div className="mt-12 py-6 border-t border-zinc-100 dark:border-zinc-900 flex justify-center">
+                            <LoadMoreDots />
+                        </div>
+                    )}
                 </div>
 
-                <div ref={sentinelRef} className="h-px mt-2" aria-hidden />
-                <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-600 to-transparent opacity-30" />
+                {/* Observer Sentinel */}
+                <div ref={sentinelRef} className="h-4 w-full" aria-hidden />
             </div>
 
+            {/* Post Detail Overlay */}
             {selectedPostId && (
                 <PostModal
                     postId={selectedPostId}
@@ -452,7 +496,6 @@ export default function PostGrid({ userId }: PostGridProps) {
                     onDelete={(id) => {
                         setPosts(prev => prev.filter(p => p._id !== id))
                         setSelectedPostId(null)
-                        // Invalidate cached pages so next visit reflects deletion
                         cache.invalidatePrefix(`posts:${userId}`)
                     }}
                 />

@@ -12,9 +12,6 @@ import {
 } from "../../lib/api/postApi"
 import api from "../../lib/api/api"
 
-/* ═══════════════════════════════════════════════════════════════
-   TYPES
-═══════════════════════════════════════════════════════════════ */
 interface PostAuthor  { _id: string; username: string }
 interface PostProfile { profilePicture?: string; name?: string }
 
@@ -29,7 +26,7 @@ interface Reply {
     replyId: string; text: string; createdAt: string
     likesCount: number; isLiked: boolean
     author: PostAuthor; profile: PostProfile
-    _parentReplyId?: string   // client-only tree tag
+    _parentReplyId?: string
 }
 
 interface Comment {
@@ -51,29 +48,17 @@ interface PostModalProps {
     onDelete?: (id: string) => void
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   CACHE
-═══════════════════════════════════════════════════════════════ */
 const postCache    = new Map<string, { data: PostDetail; ts: number }>()
 const commentCache = new Map<string, { comments: Comment[]; cursor: string | undefined; ts: number }>()
 const CACHE_TTL    = 3 * 60 * 1000
 
-/* ═══════════════════════════════════════════════════════════════
-   DESIGN TOKENS — Nothing OS aesthetic
-   Sharp corners · dot-matrix · monospace timestamps · red accent
-   Full light + dark mode via CSS variables
-═══════════════════════════════════════════════════════════════ */
 const F = {
     body:    `"SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif`,
     display: `"SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif`,
     mono:    `"SF Mono", ui-monospace, "Cascadia Code", monospace`,
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   GLOBAL CSS  (injected once via <style>)
-═══════════════════════════════════════════════════════════════ */
 const GCSS = `
-/* ── CSS variables: light default, dark override ── */
 :root {
   --pm-bg:         #FFFFFF;
   --pm-surface:    #F5F5F5;
@@ -95,39 +80,38 @@ const GCSS = `
   --pm-toast-fg:   #FFFFFF;
   --pm-reply-chip: #F5F5F5;
   --pm-input-bg:   #F5F5F5;
-  --pm-dot-color:  rgba(0,0,0,0.038);
-  --pm-media-dot:  rgba(255,255,255,0.045);
+  --pm-dot-color:  rgba(0,0,0,0.07);
+  --pm-media-dot:  rgba(255,255,255,0.055);
   --pm-overlay:    rgba(0,0,0,0.72);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --pm-bg:         #1A1A1A;
-    --pm-surface:    #242424;
-    --pm-surface2:   #2E2E2E;
-    --pm-border:     rgba(255,255,255,0.08);
-    --pm-border-md:  rgba(255,255,255,0.14);
+    --pm-bg:         #0D0D0D;
+    --pm-surface:    #1A1A1A;
+    --pm-surface2:   #242424;
+    --pm-border:     rgba(255,255,255,0.06);
+    --pm-border-md:  rgba(255,255,255,0.12);
     --pm-label:      #F0F0F0;
     --pm-sub:        #A0A0A0;
-    --pm-muted:      #666666;
+    --pm-muted:      #555555;
     --pm-red:        #FF3C3C;
     --pm-black:      #F0F0F0;
     --pm-media-bg:   #0A0A0A;
-    --pm-skel-a:     #2A2A2A;
-    --pm-skel-b:     #333333;
-    --pm-scroll-th:  #444444;
+    --pm-skel-a:     #1A1A1A;
+    --pm-skel-b:     #242424;
+    --pm-scroll-th:  #333333;
     --pm-ibtn-hover: rgba(255,255,255,0.07);
-    --pm-menu-bg:    #242424;
+    --pm-menu-bg:    #1A1A1A;
     --pm-toast-bg:   #F0F0F0;
     --pm-toast-fg:   #0D0D0D;
-    --pm-reply-chip: #2A2A2A;
-    --pm-input-bg:   #242424;
-    --pm-dot-color:  rgba(255,255,255,0.03);
-    --pm-media-dot:  rgba(255,255,255,0.045);
+    --pm-reply-chip: #1A1A1A;
+    --pm-input-bg:   #1A1A1A;
+    --pm-dot-color:  rgba(255,255,255,0.055);
+    --pm-media-dot:  rgba(255,255,255,0.055);
     --pm-overlay:    rgba(0,0,0,0.82);
   }
 }
 
-/* ── Keyframes ── */
 @keyframes pm-backdrop  { from { opacity:0 } to { opacity:1 } }
 @keyframes pm-slide-up  { from { transform:translateY(32px) scale(.97); opacity:0 } to { transform:translateY(0) scale(1); opacity:1 } }
 @keyframes pm-pop       { 0%{transform:scale(1)} 40%{transform:scale(1.32)} 70%{transform:scale(.88)} 100%{transform:scale(1)} }
@@ -143,17 +127,14 @@ const GCSS = `
 @keyframes pm-dots-blink{ 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
 @keyframes pm-img-in    { from{opacity:0;transform:scale(.98)} to{opacity:1;transform:scale(1)} }
 
-/* ── Scrollbar ── */
 .pm-scroll::-webkit-scrollbar         { width:2px }
 .pm-scroll::-webkit-scrollbar-track   { background:transparent }
 .pm-scroll::-webkit-scrollbar-thumb   { background:var(--pm-scroll-th); border-radius:4px }
 .pm-scroll                             { scrollbar-width:thin; scrollbar-color:var(--pm-scroll-th) transparent }
 
-/* ── Tap / press feedback ── */
 .pm-tap { transition:transform .12s cubic-bezier(.34,1.56,.64,1), opacity .12s }
 .pm-tap:active { transform:scale(.86) !important; opacity:.6 }
 
-/* ── Icon button ── */
 .pm-ibtn {
   display:flex; align-items:center; justify-content:center;
   border-radius:4px; cursor:pointer;
@@ -162,21 +143,17 @@ const GCSS = `
 .pm-ibtn:hover  { background:var(--pm-ibtn-hover) }
 .pm-ibtn:active { transform:scale(.88) }
 
-/* ── Hover-reveal actions ── */
 .pm-comment-item:hover  .pm-comment-actions { opacity:1 }
 .pm-comment-actions { opacity:0; transition:opacity .16s }
 .pm-reply-row:hover .pm-reply-actions { opacity:1 }
 .pm-reply-actions { opacity:0; transition:opacity .16s }
 
-/* ── Input ── */
 .pm-inp:focus          { outline:none; border-color:var(--pm-black) !important }
 .pm-inp::placeholder   { color:var(--pm-muted) }
 
-/* ── Like heart ── */
 .pm-heart { transition:transform .28s cubic-bezier(.34,1.56,.64,1), fill .14s, color .14s }
 .pm-heart.on { animation:pm-pop .35s cubic-bezier(.34,1.56,.64,1) }
 
-/* ── Context menu ── */
 .pm-ctx-menu {
   position:absolute; right:0; top:calc(100% + 5px); z-index:9999;
   background:var(--pm-menu-bg);
@@ -198,44 +175,48 @@ const GCSS = `
 .pm-ctx-item.danger     { color:var(--pm-red); font-weight:500 }
 .pm-ctx-item.danger:hover { background:rgba(255,34,34,.08) }
 
-/* ── Skeleton ── */
 .pm-skel {
   background:linear-gradient(90deg, var(--pm-skel-a) 25%, var(--pm-skel-b) 50%, var(--pm-skel-a) 75%);
   background-size:400% 100%;
   animation:pm-shimmer 1.5s ease infinite;
 }
 
-/* ── dot watermark on media panel ── */
+/* Dot watermark — light uses black dots, dark uses white dots */
+.pm-dot-grid-light {
+  position:absolute; inset:0; pointer-events:none; z-index:0; border-radius:inherit;
+  background-image:radial-gradient(circle, rgba(0,0,0,1) 1px, transparent 1px);
+  background-size:12px 12px;
+  opacity:0.04;
+}
+.pm-dot-grid-dark {
+  position:absolute; inset:0; pointer-events:none; z-index:0; border-radius:inherit;
+  background-image:radial-gradient(circle, rgba(255,255,255,1) 1px, transparent 1px);
+  background-size:12px 12px;
+  opacity:0.055;
+  display:none;
+}
+@media (prefers-color-scheme: dark) {
+  .pm-dot-grid-light { display:none; }
+  .pm-dot-grid-dark  { display:block; }
+}
+
+/* Dot watermark on dark media panel — always white dots */
 .pm-media-dots::before {
   content:''; pointer-events:none;
   position:absolute; inset:0;
   background-image:radial-gradient(circle, var(--pm-media-dot) 1px, transparent 1px);
-  background-size:14px 14px;
+  background-size:12px 12px;
   border-radius:inherit;
   z-index:1;
 }
 
-/* ── comment entrance ── */
 .pm-comment-in { animation:pm-comment-in .22s cubic-bezier(.32,.72,0,1) both }
-
-/* ── deleting row ── */
 .pm-deleting { animation:pm-delete-out .28s cubic-bezier(.32,.72,0,1) forwards; overflow:hidden }
-
-/* ── image slide in ── */
 .pm-img-in { animation:pm-img-in .22s ease both }
 `
 
-/* ═══════════════════════════════════════════════════════════════
-   SHARED STYLE HELPERS  (inline styles that reference CSS vars)
-═══════════════════════════════════════════════════════════════ */
-// Because we need CSS variables inside inline styles, we use a tiny helper
 const v = (varName: string) => `var(${varName})`
 
-/* ═══════════════════════════════════════════════════════════════
-   PRIMITIVES
-═══════════════════════════════════════════════════════════════ */
-
-/** Nothing OS: square-cornered avatar with optional online dot */
 const Avatar = ({
     src, alt, size = 36, dot = false, ringRed = false,
 }: { src?: string; alt: string; size?: number; dot?: boolean; ringRed?: boolean }) => (
@@ -276,7 +257,6 @@ function timeAgo(iso: string) {
     return new Date(iso).toLocaleDateString("en", { month: "short", day: "numeric" })
 }
 
-/** Apple-style spinner */
 const Spinner = ({ size = 20, color = "var(--pm-muted)" }: { size?: number; color?: string }) => (
     <div className="inline-flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
         <div className="relative" style={{ width: size, height: size }}>
@@ -297,7 +277,6 @@ const Spinner = ({ size = 20, color = "var(--pm-muted)" }: { size?: number; colo
     </div>
 )
 
-/* ── Like button with spring + burst ring ── */
 interface LikeBtnProps { liked: boolean; count: number; onToggle(): void; size?: "sm" | "md" | "lg" }
 const LikeBtn = ({ liked, count, onToggle, size = "md" }: LikeBtnProps) => {
     const [burst, setBurst] = useState(false)
@@ -342,7 +321,6 @@ const LikeBtn = ({ liked, count, onToggle, size = "md" }: LikeBtnProps) => {
     )
 }
 
-/* ── Context menu (edit / delete) ── */
 const CtxMenu = ({
     onEdit, onDelete, onClose,
 }: { onEdit?(): void; onDelete(): void; onClose(): void }) => {
@@ -370,7 +348,6 @@ const CtxMenu = ({
     )
 }
 
-/* ── Floating toast notification ── */
 const Toast = ({ message }: { message: string }) => (
     <div style={{
         position: "fixed", bottom: 76, left: "50%",
@@ -387,7 +364,6 @@ const Toast = ({ message }: { message: string }) => (
     </div>
 )
 
-/* ── Comment skeleton loader ── */
 const CommentSkeleton = () => (
     <div className="py-3.5 flex gap-3">
         <div className="pm-skel shrink-0" style={{ width: 32, height: 32, borderRadius: 5 }} />
@@ -399,9 +375,6 @@ const CommentSkeleton = () => (
     </div>
 )
 
-/* ═══════════════════════════════════════════════════════════════
-   TREE BUILDER  flat replies → nested TreeNode[]
-═══════════════════════════════════════════════════════════════ */
 interface TreeNode extends Reply { children: TreeNode[] }
 
 function buildTree(replies: Reply[]): TreeNode[] {
@@ -417,9 +390,6 @@ function buildTree(replies: Reply[]): TreeNode[] {
     return roots
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   REPLY NODE  (recursive, Instagram-style with thread lines)
-═══════════════════════════════════════════════════════════════ */
 const MAX_DEPTH = 5
 const INDENT_PX = 22
 
@@ -469,15 +439,9 @@ const ReplyNode = (p: ReplyNodeProps) => {
 
     return (
         <div style={{ animation: "pm-comment-in .2s cubic-bezier(.32,.72,0,1) both" }}>
-            {/* ── row ── */}
             <div className="pm-reply-row flex gap-2.5 group/reply" style={{ padding: "6px 0" }}>
-                {/* Avatar + thread rail */}
                 <div className="flex flex-col items-center shrink-0" style={{ paddingTop: 1 }}>
-                    <Avatar
-                        src={node.profile.profilePicture}
-                        alt={node.author.username}
-                        size={Math.round(avSize)}
-                    />
+                    <Avatar src={node.profile.profilePicture} alt={node.author.username} size={Math.round(avSize)} />
                     {hasKids && (
                         <div style={{
                             flex: 1, width: 1.5, marginTop: 4, marginBottom: -4,
@@ -487,7 +451,6 @@ const ReplyNode = (p: ReplyNodeProps) => {
                     )}
                 </div>
 
-                {/* Content */}
                 <div className="flex-1 min-w-0 pb-1">
                     {isEditing ? (
                         <div className="flex items-center gap-2 mt-0.5">
@@ -509,8 +472,7 @@ const ReplyNode = (p: ReplyNodeProps) => {
                                     transition: "border-color .18s",
                                 }}
                             />
-                            <button
-                                onClick={() => onEditSave(parentCommentId, node.replyId)}
+                            <button onClick={() => onEditSave(parentCommentId, node.replyId)}
                                 style={{ fontFamily: F.body, fontSize: 12, fontWeight: 700, color: v("--pm-red") }}>
                                 Save
                             </button>
@@ -519,14 +481,8 @@ const ReplyNode = (p: ReplyNodeProps) => {
                             </button>
                         </div>
                     ) : (
-                        <p style={{
-                            fontFamily: F.body, fontSize: 13, color: v("--pm-label"),
-                            lineHeight: 1.55, wordBreak: "break-word",
-                        }}>
-                            <span
-                                style={{ fontWeight: 700, cursor: "pointer" }}
-                                className="hover:underline"
-                            >
+                        <p style={{ fontFamily: F.body, fontSize: 13, color: v("--pm-label"), lineHeight: 1.55, wordBreak: "break-word" }}>
+                            <span style={{ fontWeight: 700, cursor: "pointer" }} className="hover:underline">
                                 {node.profile?.name || node.author.username}
                             </span>{" "}
                             {renderText(node.text)}
@@ -553,18 +509,11 @@ const ReplyNode = (p: ReplyNodeProps) => {
                     )}
                 </div>
 
-                {/* Right: like + menu */}
                 <div className="flex flex-col items-center gap-1.5 shrink-0 pt-1">
-                    <LikeBtn
-                        liked={node.isLiked} count={0}
-                        onToggle={() => onLike(parentCommentId, node.replyId, node.isLiked)}
-                        size="sm"
-                    />
+                    <LikeBtn liked={node.isLiked} count={0} onToggle={() => onLike(parentCommentId, node.replyId, node.isLiked)} size="sm" />
                     {isOwner && !isEditing && (
                         <div className="pm-reply-actions relative">
-                            <button
-                                onClick={() => setMenuOpen(o => !o)}
-                                className="pm-ibtn"
+                            <button onClick={() => setMenuOpen(o => !o)} className="pm-ibtn"
                                 style={{ width: 24, height: 24, color: v("--pm-muted") }}>
                                 <MoreHorizontal size={12} />
                             </button>
@@ -580,12 +529,10 @@ const ReplyNode = (p: ReplyNodeProps) => {
                 </div>
             </div>
 
-            {/* ── Recursive children ── */}
             {hasKids && (
                 <div style={{ paddingLeft: effDepth < MAX_DEPTH ? INDENT_PX : 0 }}>
                     {node.children.map((child, idx) => (
                         <div key={child.replyId} className="flex">
-                            {/* Curved connector line */}
                             <div className="shrink-0 relative" style={{ width: 18 }}>
                                 <div style={{
                                     position: "absolute", top: 0, left: 5,
@@ -604,12 +551,7 @@ const ReplyNode = (p: ReplyNodeProps) => {
                                 )}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <ReplyNode
-                                    {...p}
-                                    node={child}
-                                    depth={depth + 1}
-                                    isLast={idx === node.children.length - 1}
-                                />
+                                <ReplyNode {...p} node={child} depth={depth + 1} isLast={idx === node.children.length - 1} />
                             </div>
                         </div>
                     ))}
@@ -619,9 +561,6 @@ const ReplyNode = (p: ReplyNodeProps) => {
     )
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   MEDIA VIEWER  — strictly contained, never overflows
-═══════════════════════════════════════════════════════════════ */
 const MediaViewer = ({
     media, idx, onPrev, onNext,
 }: { media: PostDetail["media"]; idx: number; onPrev(): void; onNext(): void }) => {
@@ -632,7 +571,6 @@ const MediaViewer = ({
     const handleDbl = () => { setDblLike(true); setTimeout(() => setDblLike(false), 1000) }
 
     return (
-        /* This div fills 100% of its parent which has explicit h set on it */
         <div
             className="pm-media-dots relative select-none"
             style={{
@@ -645,8 +583,10 @@ const MediaViewer = ({
         >
             {cur?.type === "video" ? (
                 <video
-                    key={idx} src={cur.url}
+                    key={idx}
+                    src={`${cur.url}#t=0.001`}
                     autoPlay muted loop playsInline
+                    preload="metadata"
                     style={{
                         maxWidth: "100%", maxHeight: "100%",
                         width: "auto", height: "auto",
@@ -667,7 +607,6 @@ const MediaViewer = ({
                 />
             )}
 
-            {/* Double-tap heart burst */}
             {dblLike && (
                 <div style={{
                     position: "absolute", inset: 0, zIndex: 10,
@@ -681,11 +620,8 @@ const MediaViewer = ({
                 </div>
             )}
 
-            {/* Prev arrow */}
             {multi && idx > 0 && (
-                <button
-                    onClick={onPrev}
-                    className="pm-tap absolute left-3 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center"
+                <button onClick={onPrev} className="pm-tap absolute left-3 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center"
                     style={{
                         width: 30, height: 30, borderRadius: 5,
                         background: "rgba(255,255,255,.12)",
@@ -696,11 +632,8 @@ const MediaViewer = ({
                 </button>
             )}
 
-            {/* Next arrow */}
             {multi && idx < media.length - 1 && (
-                <button
-                    onClick={onNext}
-                    className="pm-tap absolute right-3 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center"
+                <button onClick={onNext} className="pm-tap absolute right-3 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center"
                     style={{
                         width: 30, height: 30, borderRadius: 5,
                         background: "rgba(255,255,255,.12)",
@@ -711,7 +644,6 @@ const MediaViewer = ({
                 </button>
             )}
 
-            {/* Dot indicator */}
             {multi && (
                 <div className="absolute bottom-3 flex gap-1.5 justify-center" style={{ left: 0, right: 0, zIndex: 10 }}>
                     {media.map((_, i) => (
@@ -726,7 +658,6 @@ const MediaViewer = ({
                 </div>
             )}
 
-            {/* Count badge — monospace Nothing OS style */}
             {multi && (
                 <div style={{
                     position: "absolute", top: 12, right: 12, zIndex: 10,
@@ -744,9 +675,6 @@ const MediaViewer = ({
     )
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   MAIN MODAL
-═══════════════════════════════════════════════════════════════ */
 export default function PostModal({ postId, onClose, onDelete }: PostModalProps) {
     const [post,            setPost]           = useState<PostDetail | null>(null)
     const [loading,         setLoading]        = useState(true)
@@ -781,7 +709,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         setTimeout(() => setToast(null), 2700)
     }
 
-    /* ── fetch post + me ── */
     useEffect(() => {
         setLoading(true); setMediaIdx(0)
         const cached = postCache.get(postId)
@@ -800,7 +727,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
             .finally(() => setLoading(false))
     }, [postId])
 
-    /* ── fetch comments ── */
     useEffect(() => {
         if (!post) return
         const cached = commentCache.get(postId)
@@ -817,7 +743,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
             .finally(() => setLoadingCmts(false))
     }, [post])
 
-    /* ── keyboard nav ── */
     useEffect(() => {
         const h = (e: KeyboardEvent) => {
             if (e.key === "Escape") onClose()
@@ -828,7 +753,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         return () => window.removeEventListener("keydown", h)
     }, [onClose, post, mediaIdx])
 
-    /* ── like post ── */
     const handleLike = async () => {
         if (!post) return
         const was = liked
@@ -838,7 +762,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         catch { setLiked(was); setLikesCount(n => was ? n + 1 : n - 1) }
     }
 
-    /* ── submit comment / reply ── */
     const handleSubmit = async () => {
         if (!input.trim() || submitting) return
         setSubmitting(true)
@@ -854,7 +777,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                 const res = await getReplies(cid)
                 const fresh: Reply[] = res.data.data.replies
 
-                // ── FIX: preserve existing _parentReplyId tags, tag only genuinely new replies ──
                 const existingIds = new Set((replies[cid] || []).map(r => r.replyId))
                 const newOnes     = fresh.filter(r => !existingIds.has(r.replyId))
                 const tagged: Reply[] = fresh.map(r => {
@@ -916,9 +838,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         setExpandedReplies(p => { const s = new Set(p); s.delete(cid); return s })
     }
 
-    /* ── comment CRUD ── */
     const handleDeleteComment = async (cid: string) => {
-        // Animated delete
         setDeletingCids(s => new Set([...s, cid]))
         setTimeout(async () => {
             setComments(p => p.filter(c => c.commentId !== cid))
@@ -963,7 +883,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         }
     }
 
-    /* ── reply CRUD ── */
     const handleReplyLike = async (pcid: string, rid: string, isLiked: boolean) => {
         setReplies(p => ({
             ...p,
@@ -987,7 +906,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
     }
 
     const handleDeleteReply = async (pcid: string, rid: string) => {
-        // Optimistically remove node + orphaned children
         setReplies(p => ({
             ...p,
             [pcid]: (p[pcid] || []).filter(r => r.replyId !== rid && r._parentReplyId !== rid),
@@ -1021,7 +939,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         }
     }
 
-    /* ── open reply ── */
     const openReply = useCallback((t: ReplyTarget) => {
         setReplyTarget(t)
         setInput(`@${t.username} `)
@@ -1032,7 +949,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         }, 60)
     }, [])
 
-    /* ── delete post ── */
     const handleDeletePost = async () => {
         if (!post) return
         await deletePost(post.postId)
@@ -1040,7 +956,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         onDelete?.(post.postId)
     }
 
-    /* ── guards ── */
     if (loading && !post) return (
         <>
             <style>{GCSS}</style>
@@ -1059,7 +974,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
 
     const isOwner = meId === post.author._id
 
-    /* common props forwarded to every ReplyNode */
     const rnCommon = {
         currentUserId:    meId,
         editingReplyId:   editRid,
@@ -1078,7 +992,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
             <style>{GCSS}</style>
             {toast && <Toast message={toast} />}
 
-            {/* ── Backdrop ── */}
+            {/* Backdrop */}
             <div
                 onClick={e => { if (e.target === e.currentTarget) onClose() }}
                 className="fixed inset-0 z-[300] flex items-end md:items-center justify-center p-0 md:p-6"
@@ -1088,12 +1002,11 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                     animation: "pm-backdrop .2s ease",
                 }}
             >
-                {/* ════ CARD ════ */}
+                {/* ── CARD ── */}
                 <div
-                    className="w-full flex flex-col md:flex-row overflow-hidden"
+                    className="w-full flex flex-col md:flex-row overflow-hidden relative"
                     style={{
                         maxWidth: 1080,
-                        /* Strict fixed height — media is fully contained, nothing overflows */
                         height: "min(90vh, 700px)",
                         minHeight: 0,
                         borderRadius: 8,
@@ -1103,12 +1016,12 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                         animation: "pm-slide-up .32s cubic-bezier(.32,.72,0,1)",
                     }}
                 >
-                    {/* ════ LEFT: MEDIA PANEL ════
-                        flex: 0 0 57%  →  does NOT grow or shrink
-                        maxWidth: 57%  →  belt-and-suspenders cap
-                        height: 100%   →  fills card height exactly
-                        overflow:hidden →  nothing can escape
-                    */}
+                    {/* Dot Matrix — light (CSS class handles dark:hidden) */}
+                    <div className="pm-dot-grid-light" />
+                    {/* Dot Matrix — dark (CSS class handles hidden dark:block) */}
+                    <div className="pm-dot-grid-dark" />
+
+                    {/* ── LEFT: MEDIA PANEL ── */}
                     <div
                         style={{
                             flex: "0 0 57%",
@@ -1118,6 +1031,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                             position: "relative",
                             borderRadius: "8px 0 0 8px",
                             overflow: "hidden",
+                            zIndex: 1,
                         }}
                     >
                         <MediaViewer
@@ -1127,7 +1041,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                             onNext={() => setMediaIdx(i => i + 1)}
                         />
 
-                        {/* Close — top-left corner */}
                         <button
                             onClick={onClose}
                             className="pm-tap absolute top-3 left-3 z-30 flex items-center justify-center"
@@ -1141,60 +1054,43 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                         </button>
                     </div>
 
-                    {/* ════ RIGHT: INFO PANEL ════ */}
+                    {/* ── RIGHT: INFO PANEL ── */}
                     <div
                         className="flex flex-col overflow-hidden"
                         style={{
                             flex: "1 1 0",
                             minWidth: 0, minHeight: 0,
                             borderLeft: `1px solid var(--pm-border)`,
+                            position: "relative",
+                            zIndex: 1,
                         }}
                     >
-                        {/* ── Header ── */}
+                        {/* Header */}
                         <div
                             className="flex items-center justify-between px-4 py-3 shrink-0"
                             style={{ borderBottom: `1px solid var(--pm-border)` }}
                         >
                             <div className="flex items-center gap-3">
-                                <Avatar
-                                    src={post.profile.profilePicture}
-                                    alt={post.author.username}
-                                    size={38}
-                                    dot
-                                    ringRed
-                                />
+                                <Avatar src={post.profile.profilePicture} alt={post.author.username} size={38} dot ringRed />
                                 <div>
-                                    <p style={{
-                                        fontFamily: F.display, fontSize: 14, fontWeight: 700,
-                                        color: v("--pm-label"), letterSpacing: "-.012em",
-                                    }}>
+                                    <p style={{ fontFamily: F.display, fontSize: 14, fontWeight: 700, color: v("--pm-label"), letterSpacing: "-.012em" }}>
                                         {post.profile.name || post.author.username}
                                     </p>
-                                    <p style={{
-                                        fontFamily: F.mono, fontSize: 10, color: v("--pm-muted"),
-                                        marginTop: 1.5, letterSpacing: ".04em",
-                                    }}>
+                                    <p style={{ fontFamily: F.mono, fontSize: 10, color: v("--pm-muted"), marginTop: 1.5, letterSpacing: ".04em" }}>
                                         @{post.author.username}
                                     </p>
                                 </div>
                             </div>
 
-                            {/* Owner actions */}
                             {isOwner && (
                                 !confirmDel ? (
-                                    <button
-                                        onClick={() => setConfirmDel(true)}
-                                        className="pm-ibtn"
+                                    <button onClick={() => setConfirmDel(true)} className="pm-ibtn"
                                         style={{ width: 34, height: 34, color: v("--pm-sub") }}>
                                         <MoreHorizontal size={17} />
                                     </button>
                                 ) : (
-                                    <div
-                                        className="flex items-center gap-2"
-                                        style={{ animation: "pm-chip-in .18s ease" }}>
-                                        <button
-                                            onClick={handleDeletePost}
-                                            className="pm-tap"
+                                    <div className="flex items-center gap-2" style={{ animation: "pm-chip-in .18s ease" }}>
+                                        <button onClick={handleDeletePost} className="pm-tap"
                                             style={{
                                                 fontFamily: F.body, fontSize: 13, fontWeight: 700,
                                                 color: "white", background: v("--pm-red"),
@@ -1202,9 +1098,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                             }}>
                                             Delete post
                                         </button>
-                                        <button
-                                            onClick={() => setConfirmDel(false)}
-                                            className="pm-tap"
+                                        <button onClick={() => setConfirmDel(false)} className="pm-tap"
                                             style={{
                                                 fontFamily: F.body, fontSize: 13, fontWeight: 600,
                                                 color: v("--pm-label"), background: v("--pm-surface"),
@@ -1218,41 +1112,25 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                             )}
                         </div>
 
-                        {/* ── Caption ── */}
+                        {/* Caption */}
                         {post.caption && (
-                            <div
-                                className="px-4 py-3 shrink-0"
-                                style={{ borderBottom: `1px solid var(--pm-border)` }}
-                            >
-                                <p style={{
-                                    fontFamily: F.body, fontSize: 14, color: v("--pm-label"),
-                                    lineHeight: 1.6, wordBreak: "break-word",
-                                }}>
-                                    <span style={{ fontWeight: 700 }}>
-                                        {post.profile.name || post.author.username}{" "}
-                                    </span>
+                            <div className="px-4 py-3 shrink-0" style={{ borderBottom: `1px solid var(--pm-border)` }}>
+                                <p style={{ fontFamily: F.body, fontSize: 14, color: v("--pm-label"), lineHeight: 1.6, wordBreak: "break-word" }}>
+                                    <span style={{ fontWeight: 700 }}>{post.profile.name || post.author.username}{" "}</span>
                                     {post.caption}
                                 </p>
-                                <p style={{
-                                    fontFamily: F.mono, fontSize: 10, color: v("--pm-muted"),
-                                    marginTop: 5, letterSpacing: ".04em",
-                                }}>
+                                <p style={{ fontFamily: F.mono, fontSize: 10, color: v("--pm-muted"), marginTop: 5, letterSpacing: ".04em" }}>
                                     {timeAgo(post.createdAt)}
                                 </p>
                             </div>
                         )}
 
-                        {/* ── Comments scroll area ── */}
-                        <div
-                            className="flex-1 overflow-y-auto px-4 py-1 pm-scroll"
-                            style={{ minHeight: 0 }}
-                        >
-                            {/* Skeleton */}
+                        {/* Comments scroll */}
+                        <div className="flex-1 overflow-y-auto px-4 py-1 pm-scroll" style={{ minHeight: 0 }}>
                             {loadingCmts && comments.length === 0 && (
                                 <>{[0, 1, 2].map(i => <CommentSkeleton key={i} />)}</>
                             )}
 
-                            {/* Empty state */}
                             {!loadingCmts && comments.length === 0 && (
                                 <div className="flex flex-col items-center justify-center py-14 gap-2">
                                     <div style={{
@@ -1264,33 +1142,23 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                     }}>
                                         <MessageCircle size={22} style={{ color: v("--pm-muted") }} strokeWidth={1.5} />
                                     </div>
-                                    <p style={{ fontFamily: F.display, fontSize: 15, fontWeight: 700, color: v("--pm-label") }}>
-                                        No comments yet
-                                    </p>
-                                    <p style={{ fontFamily: F.body, fontSize: 13, color: v("--pm-muted") }}>
-                                        Be the first to comment.
-                                    </p>
+                                    <p style={{ fontFamily: F.display, fontSize: 15, fontWeight: 700, color: v("--pm-label") }}>No comments yet</p>
+                                    <p style={{ fontFamily: F.body, fontSize: 13, color: v("--pm-muted") }}>Be the first to comment.</p>
                                 </div>
                             )}
 
-                            {/* ── Comment list ── */}
                             {comments.map((c, idx) => (
                                 <div
                                     key={c.commentId}
                                     className={`pm-comment-item pm-comment-in py-3 group ${deletingCids.has(c.commentId) ? "pm-deleting" : ""}`}
                                     style={{
-                                        borderBottom: idx < comments.length - 1 ? `1px solid rgba(0,0,0,.05)` : "none",
+                                        borderBottom: idx < comments.length - 1 ? `1px solid var(--pm-border)` : "none",
                                         animationDelay: `${idx * .04}s`,
                                     }}
                                 >
                                     <div className="flex gap-2.5">
-                                        <Avatar
-                                            src={c.profile.profilePicture}
-                                            alt={c.author.username}
-                                            size={34}
-                                        />
+                                        <Avatar src={c.profile.profilePicture} alt={c.author.username} size={34} />
                                         <div className="flex-1 min-w-0">
-                                            {/* Body / edit */}
                                             {editCid === c.commentId ? (
                                                 <div className="flex items-center gap-2 mb-1.5">
                                                     <input
@@ -1303,15 +1171,12 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                                         className="flex-1 pm-inp"
                                                         style={{
                                                             fontFamily: F.body, fontSize: 14, color: v("--pm-label"),
-                                                            borderRadius: 4,
-                                                            background: v("--pm-input-bg"),
+                                                            borderRadius: 4, background: v("--pm-input-bg"),
                                                             border: `1.5px solid var(--pm-border-md)`,
-                                                            padding: "7px 12px",
-                                                            transition: "border-color .18s",
+                                                            padding: "7px 12px", transition: "border-color .18s",
                                                         }}
                                                     />
-                                                    <button
-                                                        onClick={() => handleEditComment(c.commentId)}
+                                                    <button onClick={() => handleEditComment(c.commentId)}
                                                         style={{ fontFamily: F.body, fontSize: 13, fontWeight: 700, color: v("--pm-red") }}>
                                                         Save
                                                     </button>
@@ -1320,10 +1185,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <p style={{
-                                                    fontFamily: F.body, fontSize: 14, color: v("--pm-label"),
-                                                    lineHeight: 1.55, wordBreak: "break-word",
-                                                }}>
+                                                <p style={{ fontFamily: F.body, fontSize: 14, color: v("--pm-label"), lineHeight: 1.55, wordBreak: "break-word" }}>
                                                     <span style={{ fontWeight: 700, cursor: "pointer" }} className="hover:underline">
                                                         {c.profile?.name || c.author.username}
                                                     </span>{" "}
@@ -1331,7 +1193,6 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                                 </p>
                                             )}
 
-                                            {/* Meta row */}
                                             {editCid !== c.commentId && (
                                                 <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                                                     <span style={{ fontFamily: F.mono, fontSize: 11, color: v("--pm-muted"), letterSpacing: ".03em" }}>
@@ -1351,12 +1212,10 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                                 </div>
                                             )}
 
-                                            {/* Replies toggle */}
                                             {c.repliesCount > 0 && (
                                                 <div className="mt-2">
                                                     {!expandedReplies.has(c.commentId) ? (
-                                                        <button
-                                                            onClick={() => handleLoadReplies(c.commentId)}
+                                                        <button onClick={() => handleLoadReplies(c.commentId)}
                                                             className="pm-tap flex items-center gap-2"
                                                             style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: v("--pm-sub") }}>
                                                             {loadingReplies[c.commentId] ? (
@@ -1369,8 +1228,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                                             )}
                                                         </button>
                                                     ) : (
-                                                        <button
-                                                            onClick={() => handleCollapseReplies(c.commentId)}
+                                                        <button onClick={() => handleCollapseReplies(c.commentId)}
                                                             className="pm-tap flex items-center gap-2 mb-1"
                                                             style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: v("--pm-sub") }}>
                                                             <div style={{ width: 22, height: 1.5, background: "var(--pm-border-md)" }} />
@@ -1380,20 +1238,17 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                                 </div>
                                             )}
 
-                                            {/* ── Reply tree ── */}
                                             {expandedReplies.has(c.commentId) && replies[c.commentId] && (
                                                 <div className="mt-2.5 space-y-0">
                                                     {buildTree(replies[c.commentId]).map((node, ni, arr) => (
                                                         <ReplyNode
                                                             key={node.replyId}
-                                                            node={node}
-                                                            depth={0}
+                                                            node={node} depth={0}
                                                             parentCommentId={c.commentId}
                                                             isLast={ni === arr.length - 1}
                                                             {...rnCommon}
                                                         />
                                                     ))}
-                                                    {/* Load more replies */}
                                                     {replyCursors[c.commentId] && (
                                                         <button
                                                             onClick={() => handleLoadReplies(c.commentId, replyCursors[c.commentId])}
@@ -1413,13 +1268,8 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                             )}
                                         </div>
 
-                                        {/* Comment like + context menu */}
                                         <div className="shrink-0 flex flex-col items-center gap-1.5 pt-0.5">
-                                            <LikeBtn
-                                                liked={c.isLiked} count={0}
-                                                onToggle={() => handleCommentLike(c.commentId, c.isLiked)}
-                                                size="sm"
-                                            />
+                                            <LikeBtn liked={c.isLiked} count={0} onToggle={() => handleCommentLike(c.commentId, c.isLiked)} size="sm" />
                                             {meId === c.author._id && (
                                                 <div className="pm-comment-actions relative">
                                                     <button
@@ -1430,15 +1280,8 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                                     </button>
                                                     {menuOpenCid === c.commentId && (
                                                         <CtxMenu
-                                                            onEdit={() => {
-                                                                setEditCid(c.commentId)
-                                                                setEditCText(c.text)
-                                                                setMenuOpenCid(null)
-                                                            }}
-                                                            onDelete={() => {
-                                                                handleDeleteComment(c.commentId)
-                                                                setMenuOpenCid(null)
-                                                            }}
+                                                            onEdit={() => { setEditCid(c.commentId); setEditCText(c.text); setMenuOpenCid(null) }}
+                                                            onDelete={() => { handleDeleteComment(c.commentId); setMenuOpenCid(null) }}
                                                             onClose={() => setMenuOpenCid(null)}
                                                         />
                                                     )}
@@ -1449,11 +1292,8 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                 </div>
                             ))}
 
-                            {/* Load more comments */}
                             {commentCursor && (
-                                <button
-                                    onClick={handleLoadMoreComments}
-                                    disabled={loadingCmts}
+                                <button onClick={handleLoadMoreComments} disabled={loadingCmts}
                                     className="pm-tap w-full py-3.5 flex items-center justify-center gap-2"
                                     style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: v("--pm-sub") }}>
                                     {loadingCmts
@@ -1464,11 +1304,8 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                             )}
                         </div>
 
-                        {/* ── Actions bar ── */}
-                        <div
-                            className="px-4 py-3 shrink-0"
-                            style={{ borderTop: `1px solid var(--pm-border)` }}
-                        >
+                        {/* Actions bar */}
+                        <div className="px-4 py-3 shrink-0" style={{ borderTop: `1px solid var(--pm-border)` }}>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-4">
                                     <LikeBtn liked={liked} count={likesCount} onToggle={handleLike} size="lg" />
@@ -1483,48 +1320,30 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                             </span>
                                         )}
                                     </button>
-                                    <button
-                                        className="pm-tap"
-                                        style={{ color: v("--pm-label") }}
-                                        onClick={() => {
-                                            navigator.clipboard?.writeText(window.location.href)
-                                            showToast("Link copied")
-                                        }}>
+                                    <button className="pm-tap" style={{ color: v("--pm-label") }}
+                                        onClick={() => { navigator.clipboard?.writeText(window.location.href); showToast("Link copied") }}>
                                         <Share2 size={21} strokeWidth={1.75} />
                                     </button>
                                 </div>
-                                <button
-                                    onClick={() => setSaved(s => !s)}
-                                    className="pm-tap"
-                                    style={{ color: v("--pm-label") }}>
+                                <button onClick={() => setSaved(s => !s)} className="pm-tap" style={{ color: v("--pm-label") }}>
                                     <Bookmark size={21} strokeWidth={1.75} fill={saved ? v("--pm-label") : "none"} />
                                 </button>
                             </div>
 
                             {likesCount > 0 && (
-                                <p style={{
-                                    fontFamily: F.body, fontSize: 13, fontWeight: 700,
-                                    color: v("--pm-label"), marginTop: 8,
-                                }}>
+                                <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 700, color: v("--pm-label"), marginTop: 8 }}>
                                     {likesCount.toLocaleString()} {likesCount === 1 ? "like" : "likes"}
                                 </p>
                             )}
                             {!post.caption && (
-                                <p style={{
-                                    fontFamily: F.mono, fontSize: 9.5, color: v("--pm-muted"),
-                                    marginTop: 4, letterSpacing: ".05em", textTransform: "uppercase",
-                                }}>
+                                <p style={{ fontFamily: F.mono, fontSize: 9.5, color: v("--pm-muted"), marginTop: 4, letterSpacing: ".05em", textTransform: "uppercase" }}>
                                     {timeAgo(post.createdAt)}
                                 </p>
                             )}
                         </div>
 
-                        {/* ── Comment input ── */}
-                        <div
-                            className="px-4 pb-5 pt-2.5 shrink-0"
-                            style={{ borderTop: `1px solid var(--pm-border)` }}
-                        >
-                            {/* Reply context chip */}
+                        {/* Comment input */}
+                        <div className="px-4 pb-5 pt-2.5 shrink-0" style={{ borderTop: `1px solid var(--pm-border)` }}>
                             {replyTarget && (
                                 <div
                                     className="flex items-center justify-between mb-2 px-3 py-1.5"
@@ -1537,20 +1356,14 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                 >
                                     <span style={{ fontFamily: F.body, fontSize: 12, color: v("--pm-sub") }}>
                                         Replying to{" "}
-                                        <span style={{ fontWeight: 700, color: v("--pm-red") }}>
-                                            @{replyTarget.username}
-                                        </span>
+                                        <span style={{ fontWeight: 700, color: v("--pm-red") }}>@{replyTarget.username}</span>
                                     </span>
-                                    <button
-                                        onClick={() => { setReplyTarget(null); setInput("") }}
-                                        className="pm-tap ml-2"
-                                        style={{ color: v("--pm-muted") }}>
+                                    <button onClick={() => { setReplyTarget(null); setInput("") }} className="pm-tap ml-2" style={{ color: v("--pm-muted") }}>
                                         <X size={12} />
                                     </button>
                                 </div>
                             )}
 
-                            {/* Input row */}
                             <div className="flex items-center gap-2.5">
                                 <div
                                     className="flex-1 flex items-center gap-1"
@@ -1569,15 +1382,9 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                         onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSubmit()}
                                         placeholder={replyTarget ? "Add a reply…" : "Add a comment…"}
                                         className="flex-1 bg-transparent pm-inp"
-                                        style={{
-                                            fontFamily: F.body, fontSize: 14, color: v("--pm-label"),
-                                            border: "none", outline: "none",
-                                            padding: "10px 0",
-                                        }}
+                                        style={{ fontFamily: F.body, fontSize: 14, color: v("--pm-label"), border: "none", outline: "none", padding: "10px 0" }}
                                     />
-                                    <button
-                                        className="pm-ibtn shrink-0 p-1.5"
-                                        style={{ color: v("--pm-muted"), borderRadius: 4 }}>
+                                    <button className="pm-ibtn shrink-0 p-1.5" style={{ color: v("--pm-muted"), borderRadius: 4 }}>
                                         <Smile size={17} />
                                     </button>
                                 </div>
@@ -1594,18 +1401,15 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                     }}>
                                     {submitting
                                         ? <Spinner size={16} color={input.trim() ? "white" : "var(--pm-muted)"} />
-                                        : <Send size={14} style={{
-                                            color: input.trim() ? "white" : v("--pm-muted"),
-                                            transform: "translateX(1px)",
-                                          }} />
+                                        : <Send size={14} style={{ color: input.trim() ? "white" : v("--pm-muted"), transform: "translateX(1px)" }} />
                                     }
                                 </button>
                             </div>
                         </div>
 
-                    </div>{/* end right panel */}
-                </div>{/* end card */}
-            </div>{/* end backdrop */}
+                    </div>
+                </div>
+            </div>
         </>
     )
 }

@@ -44,7 +44,7 @@ export function ProfileStats() {
         // Patch the cache so counts survive re-renders without a refetch
         patchProfileCache({
             followersCount: profile.followersCount + followersDelta + (mode === "followers" ? delta : 0),
-            followingCount: profile.followingCount + followingDelta + (mode === "following"  ? delta : 0),
+            followingCount: profile.followingCount + followingDelta + (mode === "following" ? delta : 0),
         })
     }
 
@@ -78,59 +78,75 @@ export function ProfileStats() {
         },
     ]
 
-    return (
-        <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-[2px] mt-[2px] font-mono">
-                {stats.map((s) => {
-                    const isClickable = !!s.onClick
-                    const Tag = isClickable ? "button" : "div"
+return (
+    <>
+        {/* Container: Matches ProfileHeader width with consistent spacing */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 w-full max-w-7xl mx-auto font-mono">
+            {stats.map((s) => {
+                const isClickable = !!s.onClick;
+                const Tag = isClickable ? "button" : "div";
 
-                    return (
-                        <Tag
-                            key={s.label}
-                            onClick={s.onClick}
-                            className={`relative overflow-hidden p-7 transition-all duration-300 text-left w-full
-                                ${s.inverted
-                                    ? "bg-black dark:bg-white text-white dark:text-black"
-                                    : "bg-white dark:bg-[#0F0F0F] text-black dark:text-white border border-zinc-200 dark:border-zinc-800"
-                                }
-                                ${isClickable
-                                    ? "cursor-pointer hover:brightness-90 dark:hover:brightness-110 active:scale-[0.98]"
-                                    : "hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
-                                }`}
-                        >
-                            {!s.inverted && <DotGrid />}
-                            <div className="relative z-10 flex flex-col gap-8">
-                                <div className="flex items-center justify-between">
-                                    <span className={`text-[9px] font-bold uppercase tracking-[0.35em] ${s.inverted ? "opacity-50" : "text-zinc-400"}`}>
-                                        {s.label}
+                return (
+                    <Tag
+                        key={s.label}
+                        onClick={s.onClick}
+                        /* Unified style for all cards: no more inversion */
+                        className={`relative overflow-hidden py-6 px-8 rounded-[32px] transition-all duration-500 text-left border
+                            bg-white/70 dark:bg-[#0A0A0A]/90 backdrop-blur-3xl 
+                            border-zinc-200 dark:border-zinc-800 text-black dark:text-white
+                            ${isClickable ? "cursor-pointer hover:border-black dark:hover:border-white active:scale-[0.98]" : ""}
+                        `}
+                    >
+                        {/* Unified Dot Matrix — Subtle technical texture */}
+                        <div
+                            className="absolute inset-0 pointer-events-none opacity-[0.05]"
+                            style={{
+                                backgroundImage: "radial-gradient(circle, currentColor 0.8px, transparent 0.8px)",
+                                backgroundSize: "16px 16px",
+                            }}
+                        />
+
+                        {/* Corner Accent — The signature Nothing red hint */}
+                        <div className="absolute top-0 left-0 w-px h-8 bg-gradient-to-b from-[#FF0000]/40 to-transparent" />
+
+                        <div className="relative z-10 flex flex-col gap-1">
+                            {/* Label: Minimalist Prefix */}
+                            <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">
+                                {s.label}:
+                            </span>
+                            
+                            {/* Value Section */}
+                            <div className="flex items-baseline gap-2">
+                                <p className="text-3xl md:text-4xl font-black leading-none tracking-tighter">
+                                    {s.value.toLocaleString()}
+                                </p>
+                                {isClickable && (
+                                    <span className="text-[10px] text-[#FF0000] font-black uppercase tracking-tighter opacity-70">
+                                        Live
                                     </span>
-                                    {s.icon}
-                                </div>
-                                <div>
-                                    <p className="text-[52px] font-black leading-none tracking-[-0.05em]">
-                                        {s.value.toLocaleString()}
-                                    </p>
-                                    <p className={`text-[8px] font-bold uppercase tracking-[0.25em] mt-3 flex items-center gap-1.5 ${s.inverted ? "opacity-50" : "text-zinc-400"}`}>
-                                        {s.sub}
-                                        {s.arrow && <ArrowUpRight size={9} />}
-                                        {isClickable && <span className="ml-1 opacity-40">↗</span>}
-                                    </p>
-                                </div>
+                                )}
                             </div>
-                        </Tag>
-                    )
-                })}
-            </div>
+                        </div>
+                        
+                        {/* Bottom-right indicator for clickable modules */}
+                        {isClickable && (
+                            <div className="absolute bottom-4 right-6 opacity-20">
+                                <ArrowUpRight size={14} />
+                            </div>
+                        )}
+                    </Tag>
+                );
+            })}
+        </div>
 
-            {modal && userId && (
-                <FollowListModal
-                    userId={userId}
-                    mode={modal}
-                    onFollowChange={(delta) => handleFollowChange(delta, modal)}
-                    onClose={() => setModal(null)}
-                />
-            )}
-        </>
-    )
+        {modal && userId && (
+            <FollowListModal
+                userId={userId}
+                mode={modal}
+                onFollowChange={(delta) => handleFollowChange(delta, modal)}
+                onClose={() => setModal(null)}
+            />
+        )}
+    </>
+);
 }

@@ -7,13 +7,166 @@ import { useNavigation } from "../../hooks/useNavigation";
 import { useTheme } from "../../context/ThemeContext";
 import {
     Home, Search, Compass, MessageSquare, Play, Heart,
-    PlusSquare, User, Moon, Sun, LogOut, Menu, ChevronRight, X
+    PlusSquare, User, Moon, Sun, LogOut, Menu, ChevronRight, X,
+    MonitorX, Shield
 } from "lucide-react";
 import { useLayout } from "../../context/LayoutContext";
 import CreatePageContent from "../create/CreatePageContent";
 import api from "../../lib/api/api";
 
 const iconMap: any = { Home, Search, Compass, MessageSquare, Play, Heart, PlusSquare, User };
+
+// ─── Logout Helper ────────────────────────────────────────────────────────────
+async function performLogout(endpoint: "/auth/logout" | "/auth/logout-all") {
+    try { await api.post(endpoint); } catch { }
+    await fetch("/api/auth/logout", { method: "POST" });
+    localStorage.removeItem("accessToken");
+    window.location.replace("/login");
+}
+
+// ─── Logout Modal ─────────────────────────────────────────────────────────────
+function LogoutModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+    const [loading, setLoading] = useState<"single" | "all" | null>(null);
+
+    useEffect(() => {
+        if (open) document.body.style.overflow = "hidden";
+        else document.body.style.overflow = "";
+        return () => { document.body.style.overflow = ""; };
+    }, [open]);
+
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && !loading) onClose(); };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, [onClose, loading]);
+
+    const handleLogout = async (type: "single" | "all") => {
+        setLoading(type);
+        await performLogout(type === "all" ? "/auth/logout-all" : "/auth/logout");
+        // No need to reset — page will redirect
+    };
+
+    if (!open || typeof document === "undefined") return null;
+
+    return createPortal(
+        <div
+            className="fixed inset-0 z-[999] flex items-end sm:items-center justify-center p-4"
+            style={{
+                background: "rgba(0,0,0,0.6)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                animation: "lgBgIn 0.18s ease both",
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget && !loading) onClose(); }}
+        >
+            <style>{`
+                @keyframes lgBgIn   { from { opacity: 0 } to { opacity: 1 } }
+                @keyframes lgSlideIn {
+                    from { opacity: 0; transform: translateY(16px) scale(0.98); }
+                    to   { opacity: 1; transform: translateY(0) scale(1); }
+                }
+                @keyframes lgSlideOut {
+                    from { opacity: 1; transform: translateY(0) scale(1); }
+                    to   { opacity: 0; transform: translateY(16px) scale(0.98); }
+                }
+                @keyframes spin { to { transform: rotate(360deg); } }
+                .lg-spinner {
+                    width: 10px; height: 10px;
+                    border: 1.5px solid currentColor;
+                    border-top-color: transparent;
+                    border-radius: 50%;
+                    animation: spin 0.6s linear infinite;
+                    display: inline-block;
+                }
+            `}</style>
+
+            <div
+                className="w-full max-w-sm bg-white dark:bg-black border border-black dark:border-zinc-700 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_rgba(255,255,255,0.08)]"
+                style={{ animation: "lgSlideIn 0.22s cubic-bezier(0.22,1,0.36,1) both" }}
+            >
+                {/* Header */}
+                <div className="flex items-start justify-between p-5 border-b border-zinc-200 dark:border-zinc-800">
+                    <div>
+                        <p className="text-[8px] font-bold tracking-[0.3em] uppercase text-zinc-400 dark:text-zinc-500 mb-1">
+                            Session Control
+                        </p>
+                        <h2 className="font-nothing text-base text-black dark:text-white leading-tight">
+                            Sign Out
+                        </h2>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        disabled={!!loading}
+                        className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors disabled:opacity-30"
+                    >
+                        <X size={13} />
+                    </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-5 space-y-2">
+
+                    {/* This device only */}
+                    <button
+                        onClick={() => handleLogout("single")}
+                        disabled={!!loading}
+                        className="w-full flex items-center gap-4 p-4 border border-zinc-200 dark:border-zinc-800 hover:border-black dark:hover:border-white hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <div className="w-8 h-8 border border-zinc-300 dark:border-zinc-700 group-hover:border-black dark:group-hover:border-white flex items-center justify-center transition-colors shrink-0">
+                            {loading === "single"
+                                ? <span className="lg-spinner text-black dark:text-white" />
+                                : <LogOut size={14} strokeWidth={1.5} className="text-zinc-600 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white transition-colors" />
+                            }
+                        </div>
+                        <div className="text-left">
+                            <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-black dark:text-white">
+                                {loading === "single" ? "Signing out…" : "This Device"}
+                            </p>
+                            <p className="text-[8px] tracking-[0.1em] text-zinc-400 dark:text-zinc-500 mt-0.5 uppercase">
+                                Current session only
+                            </p>
+                        </div>
+                    </button>
+
+                    {/* All devices */}
+                    <button
+                        onClick={() => handleLogout("all")}
+                        disabled={!!loading}
+                        className="w-full flex items-center gap-4 p-4 border border-zinc-200 dark:border-zinc-800 hover:border-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <div className="w-8 h-8 border border-zinc-300 dark:border-zinc-700 group-hover:border-red-600 flex items-center justify-center transition-colors shrink-0">
+                            {loading === "all"
+                                ? <span className="lg-spinner text-red-600" />
+                                : <MonitorX size={14} strokeWidth={1.5} className="text-zinc-600 dark:text-zinc-400 group-hover:text-red-600 transition-colors" />
+                            }
+                        </div>
+                        <div className="text-left">
+                            <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-black dark:text-white group-hover:text-red-600 transition-colors">
+                                {loading === "all" ? "Signing out everywhere…" : "All Devices"}
+                            </p>
+                            <p className="text-[8px] tracking-[0.1em] text-zinc-400 dark:text-zinc-500 mt-0.5 uppercase">
+                                Revoke all active sessions
+                            </p>
+                        </div>
+                    </button>
+
+                </div>
+
+                {/* Footer */}
+                <div className="px-5 pb-5">
+                    <button
+                        onClick={onClose}
+                        disabled={!!loading}
+                        className="w-full p-3 text-[9px] font-bold tracking-[0.25em] uppercase text-zinc-400 dark:text-zinc-600 hover:text-black dark:hover:text-white border border-transparent hover:border-zinc-200 dark:hover:border-zinc-800 transition-all disabled:opacity-30"
+                    >
+                        Abort / Stay Logged In
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+}
 
 // ─── Create Modal ─────────────────────────────────────────────────────────────
 function CreateModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -61,11 +214,6 @@ function CreateModal({ open, onClose }: { open: boolean; onClose: () => void }) 
                 >
                     <X size={15} />
                 </button>
-
-                {/*
-                    onSubmit fires the moment user hits "Execute_Broadcast"
-                    — closes the modal immediately while upload continues in background
-                */}
                 <CreatePageContent onSubmit={onClose} />
             </div>
         </div>,
@@ -79,6 +227,7 @@ export const Sidebar = () => {
     const { isDark, toggleTheme } = useTheme();
     const [showMore, setShowMore] = useState(false);
     const [createOpen, setCreateOpen] = useState(false);
+    const [logoutOpen, setLogoutOpen] = useState(false);
     const moreMenuRef = useRef<HTMLDivElement>(null);
     const { isCollapsed, setIsCollapsed } = useLayout();
 
@@ -95,9 +244,8 @@ export const Sidebar = () => {
     return (
         <div className="relative z-50">
             <aside
-                className={`fixed left-0 top-0 h-screen border-r border-zinc-300 dark:border-zinc-800 bg-white dark:bg-black transition-all duration-500 ease-in-out ${
-                    isCollapsed ? "w-20" : "w-64"
-                }`}
+                className={`fixed left-0 top-0 h-screen border-r border-zinc-300 dark:border-zinc-800 bg-white dark:bg-black transition-all duration-500 ease-in-out ${isCollapsed ? "w-20" : "w-64"
+                    }`}
             >
                 <div className="absolute inset-0 nothing-dot-grid opacity-[0.03] dark:opacity-[0.07] pointer-events-none" />
 
@@ -135,35 +283,75 @@ export const Sidebar = () => {
                             const Icon = iconMap[item.icon];
                             const isActive = pathname === item.href;
                             const isCreate = item.icon === "PlusSquare";
-
                             if (isCreate) {
                                 return (
-                                    <button
-                                        key={item.href}
-                                        onClick={() => setCreateOpen(true)}
-                                        className="w-full flex items-center gap-4 p-3 transition-all duration-200 group relative rounded-lg text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
-                                    >
-                                        <div className="shrink-0">
-                                            <Icon size={18} strokeWidth={1.5} />
-                                        </div>
-                                        <div className={`transition-all duration-500 overflow-hidden ${isCollapsed ? "opacity-0 w-0" : "opacity-100 w-40"}`}>
-                                            <span className="text-[10px] font-bold tracking-[0.2em] uppercase whitespace-nowrap opacity-70 group-hover:opacity-100">
-                                                {item.label}
-                                            </span>
-                                        </div>
-                                    </button>
+                                    <div key={item.href} className="py-4 my-2 px-2">
+                                        <button
+                                            onClick={() => setCreateOpen(true)}
+                                            className={`
+                    relative w-full flex items-center gap-4 p-3 
+                    transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]
+                    group rounded-[22px] overflow-hidden
+                    ${isCollapsed ? "justify-center h-12 w-12 mx-auto" : "px-4 h-14"}
+                    
+                    /* Nothing OS 3.0 Aesthetic: Solid Block */
+                    bg-black dark:bg-white 
+                    text-white dark:text-black
+                    
+                    /* Hardware Shadow Effect */
+                    shadow-[0_10px_20px_-10px_rgba(0,0,0,0.5)] dark:shadow-[0_10px_20px_-10px_rgba(255,255,255,0.2)]
+                    
+                    /* Hover States */
+                    hover:scale-[1.03] 
+                    hover:shadow-[0_15px_25px_-10px_rgba(0,0,0,0.6)]
+                    active:scale-95
+                `}
+                                        >
+                                            {/* 1. Nothing Signature Red Dot (Top Right) */}
+                                            <div className="absolute top-3 right-3">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-[#FF0000] shadow-[0_0_8px_#FF0000] animate-pulse" />
+                                            </div>
+
+                                            {/* 2. Tactical Dot Matrix (Subtle background texture) */}
+                                            <div
+                                                className="absolute inset-0 opacity-[0.15] pointer-events-none"
+                                                style={{
+                                                    backgroundImage: `radial-gradient(circle, currentColor 0.5px, transparent 0.5px)`,
+                                                    backgroundSize: '4px 4px'
+                                                }}
+                                            />
+
+                                            {/* 3. Icon: Inverted Ring Style */}
+                                            <div className="relative z-10 shrink-0 flex items-center justify-center">
+                                                <div className="w-8 h-8 rounded-full border border-white/20 dark:border-black/10 flex items-center justify-center group-hover:bg-white dark:group-hover:bg-black group-hover:text-black dark:group-hover:text-white transition-all duration-300">
+                                                    <PlusSquare
+                                                        size={16}
+                                                        strokeWidth={2}
+                                                        className="group-hover:rotate-90 transition-transform duration-500"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* 4. Label: NDOT-style Spacing */}
+                                            <div className={`relative z-10 transition-all duration-500 overflow-hidden ${isCollapsed ? "opacity-0 w-0" : "opacity-100 w-24 ml-1"}`}>
+                                                <span className="text-[10px] font-black tracking-[0.4em] uppercase whitespace-nowrap">
+                                                    {item.label}
+                                                </span>
+                                                {/* Industrial line detail */}
+                                                <div className="mt-0.5 h-[1px] w-4 bg-current opacity-30 group-hover:w-full transition-all duration-500" />
+                                            </div>
+                                        </button>
+                                    </div>
                                 );
                             }
-
                             return (
                                 <Link
                                     key={item.href}
                                     href={item.href}
-                                    className={`flex items-center gap-4 p-3 transition-all duration-200 group relative rounded-lg ${
-                                        isActive
-                                            ? "text-black dark:text-white bg-zinc-200/80 dark:bg-zinc-900/80 shadow-sm"
-                                            : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
-                                    }`}
+                                    className={`flex items-center gap-4 p-3 transition-all duration-200 group relative rounded-lg ${isActive
+                                        ? "text-black dark:text-white bg-zinc-200/80 dark:bg-zinc-900/80 shadow-sm"
+                                        : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
+                                        }`}
                                 >
                                     {isActive && <div className="absolute left-0 w-[2.5px] h-6 bg-black dark:bg-white" />}
                                     <div className="shrink-0">
@@ -191,11 +379,7 @@ export const Sidebar = () => {
                                     <span className="whitespace-nowrap">Appearance</span>
                                 </button>
                                 <button
-                                    onClick={async () => {
-                                        try { await api.post("/auth/logout"); } catch { }
-                                        localStorage.removeItem("accessToken");
-                                        window.location.replace("/login");
-                                    }}
+                                    onClick={() => { setShowMore(false); setLogoutOpen(true); }}
                                     className="w-full flex items-center gap-3 p-3 text-[9px] font-bold uppercase tracking-widest text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white transition-colors"
                                 >
                                     <div className="shrink-0"><LogOut size={14} /></div>
@@ -206,11 +390,10 @@ export const Sidebar = () => {
 
                         <button
                             onClick={() => setShowMore(!showMore)}
-                            className={`w-full flex items-center p-3 border transition-all group rounded-lg ${
-                                showMore
-                                    ? "bg-black dark:bg-white text-white dark:text-black border-black dark:border-white"
-                                    : "border-zinc-300 dark:border-zinc-800 text-zinc-800 dark:text-zinc-300 hover:border-black dark:hover:border-white hover:text-black dark:hover:text-white"
-                            }`}
+                            className={`w-full flex items-center p-3 border transition-all group rounded-lg ${showMore
+                                ? "bg-black dark:bg-white text-white dark:text-black border-black dark:border-white"
+                                : "border-zinc-300 dark:border-zinc-800 text-zinc-800 dark:text-zinc-300 hover:border-black dark:hover:border-white hover:text-black dark:hover:text-white"
+                                }`}
                         >
                             <div className="shrink-0"><Menu size={18} strokeWidth={1.5} /></div>
                             <div className={`flex items-center justify-between transition-all duration-500 overflow-hidden ${isCollapsed ? "opacity-0 w-0" : "opacity-100 w-full ml-4"}`}>
@@ -223,6 +406,7 @@ export const Sidebar = () => {
             </aside>
 
             <CreateModal open={createOpen} onClose={() => setCreateOpen(false)} />
+            <LogoutModal open={logoutOpen} onClose={() => setLogoutOpen(false)} />
         </div>
     );
 };
