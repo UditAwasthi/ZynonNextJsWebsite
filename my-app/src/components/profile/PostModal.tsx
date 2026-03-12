@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react"
 import {
     X, ChevronLeft, ChevronRight, Send, UserCircle2,
     MessageCircle, Heart, MoreHorizontal, Trash2, Pencil,
-    Bookmark, Share2, Smile,
+    Bookmark, Share2, Smile, VolumeX, Volume2,
 } from "lucide-react"
 import {
     getSinglePost, toggleLike, getComments, createComment,
@@ -12,7 +12,7 @@ import {
 } from "../../lib/api/postApi"
 import api from "../../lib/api/api"
 
-interface PostAuthor  { _id: string; username: string }
+interface PostAuthor { _id: string; username: string }
 interface PostProfile { profilePicture?: string; name?: string }
 
 interface PostDetail {
@@ -48,14 +48,14 @@ interface PostModalProps {
     onDelete?: (id: string) => void
 }
 
-const postCache    = new Map<string, { data: PostDetail; ts: number }>()
+const postCache = new Map<string, { data: PostDetail; ts: number }>()
 const commentCache = new Map<string, { comments: Comment[]; cursor: string | undefined; ts: number }>()
-const CACHE_TTL    = 3 * 60 * 1000
+const CACHE_TTL = 3 * 60 * 1000
 
 const F = {
-    body:    `"SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif`,
+    body: `"SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif`,
     display: `"SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif`,
-    mono:    `"SF Mono", ui-monospace, "Cascadia Code", monospace`,
+    mono: `"SF Mono", ui-monospace, "Cascadia Code", monospace`,
 }
 
 const GCSS = `
@@ -235,7 +235,7 @@ const Avatar = ({
             ? <img src={src} alt={alt} className="w-full h-full object-cover pm-img-in" loading="lazy" />
             : <div className="w-full h-full flex items-center justify-center">
                 <UserCircle2 size={size * .55} style={{ color: v("--pm-muted") }} />
-              </div>
+            </div>
         }
         {dot && (
             <span style={{
@@ -250,9 +250,9 @@ const Avatar = ({
 
 function timeAgo(iso: string) {
     const s = (Date.now() - new Date(iso).getTime()) / 1000
-    if (s < 60)     return "now"
-    if (s < 3600)   return `${Math.floor(s / 60)}m`
-    if (s < 86400)  return `${Math.floor(s / 3600)}h`
+    if (s < 60) return "now"
+    if (s < 3600) return `${Math.floor(s / 60)}m`
+    if (s < 86400) return `${Math.floor(s / 3600)}h`
     if (s < 604800) return `${Math.floor(s / 86400)}d`
     return new Date(iso).toLocaleDateString("en", { month: "short", day: "numeric" })
 }
@@ -260,7 +260,7 @@ function timeAgo(iso: string) {
 const Spinner = ({ size = 20, color = "var(--pm-muted)" }: { size?: number; color?: string }) => (
     <div className="inline-flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
         <div className="relative" style={{ width: size, height: size }}>
-            {[0,1,2,3,4,5,6,7].map(i => (
+            {[0, 1, 2, 3, 4, 5, 6, 7].map(i => (
                 <span key={i} className="absolute rounded-full"
                     style={{
                         width: size * .11, height: size * .27,
@@ -370,7 +370,7 @@ const CommentSkeleton = () => (
         <div className="flex-1 space-y-2">
             <div className="pm-skel" style={{ height: 11, width: "44%", borderRadius: 3 }} />
             <div className="pm-skel" style={{ height: 11, width: "68%", borderRadius: 3 }} />
-            <div className="pm-skel" style={{ height: 9,  width: "29%", borderRadius: 3, marginTop: 6 }} />
+            <div className="pm-skel" style={{ height: 9, width: "29%", borderRadius: 3, marginTop: 6 }} />
         </div>
     </div>
 )
@@ -383,7 +383,7 @@ function buildTree(replies: Reply[]): TreeNode[] {
     const roots: TreeNode[] = []
     replies.forEach(r => {
         const node = map.get(r.replyId)!
-        const pid  = r._parentReplyId
+        const pid = r._parentReplyId
         if (pid && map.has(pid)) map.get(pid)!.children.push(node)
         else roots.push(node)
     })
@@ -416,12 +416,12 @@ const ReplyNode = (p: ReplyNodeProps) => {
     } = p
 
     const [menuOpen, setMenuOpen] = useState(false)
-    const editRef                  = useRef<HTMLInputElement>(null)
-    const isEditing                = editingReplyId === node.replyId
-    const isOwner                  = currentUserId === node.author._id
-    const hasKids                  = node.children.length > 0
-    const effDepth                 = Math.min(depth, MAX_DEPTH)
-    const avSize                   = Math.max(22, 30 - effDepth * 2)
+    const editRef = useRef<HTMLInputElement>(null)
+    const isEditing = editingReplyId === node.replyId
+    const isOwner = currentUserId === node.author._id
+    const hasKids = node.children.length > 0
+    const effDepth = Math.min(depth, MAX_DEPTH)
+    const avSize = Math.max(22, 30 - effDepth * 2)
 
     useEffect(() => { if (isEditing) editRef.current?.focus() }, [isEditing])
 
@@ -460,7 +460,7 @@ const ReplyNode = (p: ReplyNodeProps) => {
                                 className="flex-1 pm-inp"
                                 onChange={e => onEditTextChange(e.target.value)}
                                 onKeyDown={e => {
-                                    if (e.key === "Enter")  onEditSave(parentCommentId, node.replyId)
+                                    if (e.key === "Enter") onEditSave(parentCommentId, node.replyId)
                                     if (e.key === "Escape") onEditCancel()
                                 }}
                                 style={{
@@ -560,13 +560,23 @@ const ReplyNode = (p: ReplyNodeProps) => {
         </div>
     )
 }
-
 const MediaViewer = ({
     media, idx, onPrev, onNext,
 }: { media: PostDetail["media"]; idx: number; onPrev(): void; onNext(): void }) => {
     const [dblLike, setDblLike] = useState(false)
+    const [muted, setMuted] = useState(true)
+    const videoRef = useRef<HTMLVideoElement>(null)
     const multi = media.length > 1
-    const cur   = media[idx]
+    const cur = media[idx]
+    const isVideo = cur?.type === "video"
+
+    // Re-mute when switching slides
+    useEffect(() => { setMuted(true) }, [idx])
+
+    // Sync muted state to video element
+    useEffect(() => {
+        if (videoRef.current) videoRef.current.muted = muted
+    }, [muted])
 
     const handleDbl = () => { setDblLike(true); setTimeout(() => setDblLike(false), 1000) }
 
@@ -581,8 +591,9 @@ const MediaViewer = ({
             }}
             onDoubleClick={handleDbl}
         >
-            {cur?.type === "video" ? (
+            {isVideo ? (
                 <video
+                    ref={videoRef}
                     key={idx}
                     src={`${cur.url}#t=0.001`}
                     autoPlay muted loop playsInline
@@ -618,6 +629,25 @@ const MediaViewer = ({
                         animation: "pm-pop .9s cubic-bezier(.32,.72,0,1) forwards",
                     }} />
                 </div>
+            )}
+
+            {/* Mute/Unmute button — only shown for videos */}
+            {isVideo && (
+                <button
+                    onClick={e => { e.stopPropagation(); setMuted(m => !m) }}
+                    className="pm-tap absolute bottom-10 right-3 z-20 flex items-center justify-center"
+                    style={{
+                        width: 30, height: 30, borderRadius: 5,
+                        background: "rgba(0,0,0,.48)",
+                        backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+                        border: "1px solid rgba(255,255,255,.15)",
+                    }}
+                >
+                    {muted
+                        ? <VolumeX size={13} style={{ color: "white" }} />
+                        : <Volume2 size={13} style={{ color: "white" }} />
+                    }
+                </button>
             )}
 
             {multi && idx > 0 && (
@@ -676,31 +706,31 @@ const MediaViewer = ({
 }
 
 export default function PostModal({ postId, onClose, onDelete }: PostModalProps) {
-    const [post,            setPost]           = useState<PostDetail | null>(null)
-    const [loading,         setLoading]        = useState(true)
-    const [meId,            setMeId]           = useState<string | null>(null)
-    const [mediaIdx,        setMediaIdx]       = useState(0)
-    const [liked,           setLiked]          = useState(false)
-    const [likesCount,      setLikesCount]     = useState(0)
-    const [saved,           setSaved]          = useState(false)
-    const [comments,        setComments]       = useState<Comment[]>([])
-    const [commentCursor,   setCommentCursor]  = useState<string | undefined>()
-    const [loadingCmts,     setLoadingCmts]    = useState(false)
-    const [input,           setInput]          = useState("")
-    const [submitting,      setSubmitting]     = useState(false)
-    const [replyTarget,     setReplyTarget]    = useState<ReplyTarget | null>(null)
-    const [replies,         setReplies]        = useState<Record<string, Reply[]>>({})
-    const [expandedReplies, setExpandedReplies]= useState<Set<string>>(new Set())
-    const [loadingReplies,  setLoadingReplies] = useState<Record<string, boolean>>({})
-    const [replyCursors,    setReplyCursors]   = useState<Record<string, string | undefined>>({})
-    const [editCid,         setEditCid]        = useState<string | null>(null)
-    const [editCText,       setEditCText]      = useState("")
-    const [editRid,         setEditRid]        = useState<string | null>(null)
-    const [editRText,       setEditRText]      = useState("")
-    const [deletingCids,    setDeletingCids]   = useState<Set<string>>(new Set())
-    const [confirmDel,      setConfirmDel]     = useState(false)
-    const [menuOpenCid,     setMenuOpenCid]    = useState<string | null>(null)
-    const [toast,           setToast]          = useState<string | null>(null)
+    const [post, setPost] = useState<PostDetail | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [meId, setMeId] = useState<string | null>(null)
+    const [mediaIdx, setMediaIdx] = useState(0)
+    const [liked, setLiked] = useState(false)
+    const [likesCount, setLikesCount] = useState(0)
+    const [saved, setSaved] = useState(false)
+    const [comments, setComments] = useState<Comment[]>([])
+    const [commentCursor, setCommentCursor] = useState<string | undefined>()
+    const [loadingCmts, setLoadingCmts] = useState(false)
+    const [input, setInput] = useState("")
+    const [submitting, setSubmitting] = useState(false)
+    const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null)
+    const [replies, setReplies] = useState<Record<string, Reply[]>>({})
+    const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set())
+    const [loadingReplies, setLoadingReplies] = useState<Record<string, boolean>>({})
+    const [replyCursors, setReplyCursors] = useState<Record<string, string | undefined>>({})
+    const [editCid, setEditCid] = useState<string | null>(null)
+    const [editCText, setEditCText] = useState("")
+    const [editRid, setEditRid] = useState<string | null>(null)
+    const [editRText, setEditRText] = useState("")
+    const [deletingCids, setDeletingCids] = useState<Set<string>>(new Set())
+    const [confirmDel, setConfirmDel] = useState(false)
+    const [menuOpenCid, setMenuOpenCid] = useState<string | null>(null)
+    const [toast, setToast] = useState<string | null>(null)
 
     const inputRef = useRef<HTMLInputElement>(null)
 
@@ -747,7 +777,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         const h = (e: KeyboardEvent) => {
             if (e.key === "Escape") onClose()
             if (e.key === "ArrowRight" && post && mediaIdx < post.media.length - 1) setMediaIdx(i => i + 1)
-            if (e.key === "ArrowLeft"  && mediaIdx > 0) setMediaIdx(i => i - 1)
+            if (e.key === "ArrowLeft" && mediaIdx > 0) setMediaIdx(i => i - 1)
         }
         window.addEventListener("keydown", h)
         return () => window.removeEventListener("keydown", h)
@@ -766,7 +796,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         if (!input.trim() || submitting) return
         setSubmitting(true)
         const mention = replyTarget ? `@${replyTarget.username} ` : ""
-        const text    = input.trim().startsWith("@") ? input.trim() : mention + input.trim()
+        const text = input.trim().startsWith("@") ? input.trim() : mention + input.trim()
         try {
             await createComment(postId, text, replyTarget?.parentCommentId)
             setInput(""); commentCache.delete(postId)
@@ -778,7 +808,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                 const fresh: Reply[] = res.data.data.replies
 
                 const existingIds = new Set((replies[cid] || []).map(r => r.replyId))
-                const newOnes     = fresh.filter(r => !existingIds.has(r.replyId))
+                const newOnes = fresh.filter(r => !existingIds.has(r.replyId))
                 const tagged: Reply[] = fresh.map(r => {
                     if (rid && newOnes.some(nr => nr.replyId === r.replyId))
                         return { ...r, _parentReplyId: rid }
@@ -799,7 +829,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                 commentCache.set(postId, { comments: c, cursor: nextCursor ?? undefined, ts: Date.now() })
                 setComments(c); setCommentCursor(nextCursor ?? undefined)
             }
-        } catch {}
+        } catch { }
         finally { setSubmitting(false) }
     }
 
@@ -807,7 +837,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
         if (!commentCursor) return
         setLoadingCmts(true)
         try {
-            const res    = await getComments(postId, commentCursor)
+            const res = await getComments(postId, commentCursor)
             const merged = [...comments, ...res.data.data.comments]
             commentCache.set(postId, { comments: merged, cursor: res.data.data.nextCursor ?? undefined, ts: Date.now() })
             setComments(merged); setCommentCursor(res.data.data.nextCursor ?? undefined)
@@ -817,12 +847,12 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
     const handleLoadReplies = async (cid: string, cur?: string) => {
         setLoadingReplies(p => ({ ...p, [cid]: true }))
         try {
-            const res      = await getReplies(cid, cur)
+            const res = await getReplies(cid, cur)
             const incoming: Reply[] = res.data.data.replies
             setReplies(prev => {
                 const existing = prev[cid] || []
                 if (cur) {
-                    const exMap  = new Map(existing.map(r => [r.replyId, r]))
+                    const exMap = new Map(existing.map(r => [r.replyId, r]))
                     const merged = [...existing]
                     incoming.forEach(r => { if (!exMap.has(r.replyId)) merged.push(r) })
                     return { ...prev, [cid]: merged }
@@ -856,7 +886,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
     const handleEditComment = async (cid: string) => {
         if (!editCText.trim()) return
         const prev = comments.find(c => c.commentId === cid)?.text
-        const upd  = comments.map(c => c.commentId === cid ? { ...c, text: editCText.trim() } : c)
+        const upd = comments.map(c => c.commentId === cid ? { ...c, text: editCText.trim() } : c)
         setComments(upd)
         commentCache.set(postId, { comments: upd, cursor: commentCursor, ts: Date.now() })
         setEditCid(null)
@@ -975,16 +1005,16 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
     const isOwner = meId === post.author._id
 
     const rnCommon = {
-        currentUserId:    meId,
-        editingReplyId:   editRid,
-        editReplyText:    editRText,
-        onEditStart:      (id: string, txt: string) => { setEditRid(id); setEditRText(txt) },
-        onEditCancel:     () => setEditRid(null),
-        onEditSave:       handleEditReply,
+        currentUserId: meId,
+        editingReplyId: editRid,
+        editReplyText: editRText,
+        onEditStart: (id: string, txt: string) => { setEditRid(id); setEditRText(txt) },
+        onEditCancel: () => setEditRid(null),
+        onEditSave: handleEditReply,
         onEditTextChange: setEditRText,
-        onLike:           handleReplyLike,
-        onDelete:         handleDeleteReply,
-        onReply:          openReply,
+        onLike: handleReplyLike,
+        onDelete: handleDeleteReply,
+        onReply: openReply,
     }
 
     return (
@@ -1165,7 +1195,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                                         autoFocus value={editCText}
                                                         onChange={e => setEditCText(e.target.value)}
                                                         onKeyDown={e => {
-                                                            if (e.key === "Enter")  handleEditComment(c.commentId)
+                                                            if (e.key === "Enter") handleEditComment(c.commentId)
                                                             if (e.key === "Escape") setEditCid(null)
                                                         }}
                                                         className="flex-1 pm-inp"
