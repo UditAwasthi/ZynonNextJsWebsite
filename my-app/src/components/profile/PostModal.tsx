@@ -126,6 +126,7 @@ const GCSS = `
 @keyframes pm-delete-out{ from{transform:scaleY(1);opacity:1;max-height:200px} to{transform:scaleY(0);opacity:0;max-height:0} }
 @keyframes pm-dots-blink{ 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
 @keyframes pm-img-in    { from{opacity:0;transform:scale(.98)} to{opacity:1;transform:scale(1)} }
+@keyframes pm-playpause { 0%{transform:scale(.7);opacity:0} 40%{transform:scale(1.15);opacity:1} 70%{transform:scale(.92)} 100%{transform:scale(1);opacity:0} }
 
 .pm-scroll::-webkit-scrollbar         { width:2px }
 .pm-scroll::-webkit-scrollbar-track   { background:transparent }
@@ -213,6 +214,7 @@ const GCSS = `
 .pm-comment-in { animation:pm-comment-in .22s cubic-bezier(.32,.72,0,1) both }
 .pm-deleting { animation:pm-delete-out .28s cubic-bezier(.32,.72,0,1) forwards; overflow:hidden }
 .pm-img-in { animation:pm-img-in .22s ease both }
+.pm-playpause-icon { animation:pm-playpause .55s cubic-bezier(.32,.72,0,1) forwards }
 `
 
 const v = (varName: string) => `var(${varName})`
@@ -560,23 +562,42 @@ const ReplyNode = (p: ReplyNodeProps) => {
         </div>
     )
 }
+
 const MediaViewer = ({
     media, idx, onPrev, onNext,
 }: { media: PostDetail["media"]; idx: number; onPrev(): void; onNext(): void }) => {
     const [dblLike, setDblLike] = useState(false)
     const [muted, setMuted] = useState(true)
+    const [paused, setPaused] = useState(false)
+    const [showPlayIcon, setShowPlayIcon] = useState(false)
     const videoRef = useRef<HTMLVideoElement>(null)
     const multi = media.length > 1
     const cur = media[idx]
     const isVideo = cur?.type === "video"
 
-    // Re-mute when switching slides
-    useEffect(() => { setMuted(true) }, [idx])
+    // Re-mute and resume playback when switching slides
+    useEffect(() => { setMuted(true); setPaused(false) }, [idx])
 
     // Sync muted state to video element
     useEffect(() => {
         if (videoRef.current) videoRef.current.muted = muted
     }, [muted])
+
+    // Sync paused state to video element
+    useEffect(() => {
+        if (!videoRef.current) return
+        if (paused) {
+            videoRef.current.pause()
+        } else {
+            videoRef.current.play().catch(() => {})
+        }
+    }, [paused])
+
+    const handleVideoTap = () => {
+        setPaused(p => !p)
+        setShowPlayIcon(true)
+        setTimeout(() => setShowPlayIcon(false), 600)
+    }
 
     const handleDbl = () => { setDblLike(true); setTimeout(() => setDblLike(false), 1000) }
 
@@ -598,11 +619,13 @@ const MediaViewer = ({
                     src={`${cur.url}#t=0.001`}
                     autoPlay muted loop playsInline
                     preload="metadata"
+                    onClick={handleVideoTap}
                     style={{
                         maxWidth: "100%", maxHeight: "100%",
                         width: "auto", height: "auto",
                         objectFit: "contain", display: "block",
-                        pointerEvents: "none",
+                        cursor: "pointer",
+                        position: "relative", zIndex: 2,
                     }}
                 />
             ) : (
@@ -618,6 +641,7 @@ const MediaViewer = ({
                 />
             )}
 
+            {/* Double-tap heart burst */}
             {dblLike && (
                 <div style={{
                     position: "absolute", inset: 0, zIndex: 10,
@@ -628,6 +652,38 @@ const MediaViewer = ({
                         filter: "drop-shadow(0 4px 24px rgba(0,0,0,.5))",
                         animation: "pm-pop .9s cubic-bezier(.32,.72,0,1) forwards",
                     }} />
+                </div>
+            )}
+
+            {/* Tap-to-play/pause icon overlay */}
+            {isVideo && showPlayIcon && (
+                <div style={{
+                    position: "absolute", inset: 0, zIndex: 11,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    pointerEvents: "none",
+                }}>
+                    <div
+                        className="pm-playpause-icon"
+                        style={{
+                            width: 58, height: 58, borderRadius: 8,
+                            background: "rgba(0,0,0,.52)",
+                            backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+                            border: "1px solid rgba(255,255,255,.18)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                        }}
+                    >
+                        {paused ? (
+                            /* Play icon */
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                                <path d="M8 5v14l11-7z" />
+                            </svg>
+                        ) : (
+                            /* Pause icon */
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                            </svg>
+                        )}
+                    </div>
                 </div>
             )}
 
