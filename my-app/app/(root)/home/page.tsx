@@ -4,7 +4,7 @@ import React, { useState } from "react"
 import axios from "axios"
 import { Loader2 } from "lucide-react"
 
-const BASE_URL = "https://zynon.onrender.com/api"
+const BASE_URL =process.env.NEXT_PUBLIC_API_BASE|| "https://zynon.onrender.com/api/"
 
 export default function RefreshTester() {
   const [responseData, setResponseData] = useState<any>(null)
@@ -15,7 +15,7 @@ export default function RefreshTester() {
   setResponseData(null);
 
   try {
-    const res = await axios.post("/api/auth/refresh", {});
+    const res = await axios.post("auth/refresh", {});
     // No withCredentials needed — same-origin request now
     setResponseData(res.data);
   } catch (err: any) {

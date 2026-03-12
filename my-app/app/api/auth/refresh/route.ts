@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BASE_URL = process.env.API_BASE_URL || "https://zynon.onrender.com/api";
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE|| "https://zynon.onrender.com/api/";
 
 export async function POST(request: NextRequest) {
   const refreshToken = request.cookies.get("refreshToken")?.value;
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "No refresh token found" }, { status: 401 });
   }
 
-  const backendRes = await fetch(`${BASE_URL}/auth/refresh`, {
+  const backendRes = await fetch(`${BASE_URL}auth/refresh`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

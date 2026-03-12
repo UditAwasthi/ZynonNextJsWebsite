@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Use a private env var — not NEXT_PUBLIC_ (that leaks to the browser bundle)
-const BASE_URL = process.env.API_BASE_URL || "https://zynon.onrender.com/api/";
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE || "https://zynon.onrender.com/api/";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
