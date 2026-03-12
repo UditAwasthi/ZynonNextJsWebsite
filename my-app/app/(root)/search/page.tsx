@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { User, FileText, Search, AlertTriangle, Loader2, ArrowLeft, ArrowRight } from "lucide-react"
@@ -199,7 +199,7 @@ function LoadingState() {
 }
 
 /* ─── SEARCH PAGE ─── */
-export default function SearchPage() {
+function SearchPageInner() {
     const searchParams = useSearchParams()
     const router = useRouter()
     const query = searchParams.get("q") || ""
@@ -368,5 +368,13 @@ export default function SearchPage() {
                 )}
             </div>
         </div>
+    )
+}
+
+export default function SearchPage() {
+    return (
+        <Suspense>
+            <SearchPageInner />
+        </Suspense>
     )
 }
