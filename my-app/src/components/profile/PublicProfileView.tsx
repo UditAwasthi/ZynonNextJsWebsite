@@ -37,7 +37,14 @@ async function fetchPublicProfile(username: string): Promise<PublicProfile> {
     if (!res.ok) throw new Error("Profile not found")
     const json = await res.json()
     const d = json.data
-    return { ...d, username: d.user?.username ?? username, name: d.name ?? undefined }
+    // Normalize: ensure user._id is always populated (fallback to profile doc _id)
+    const userId = d.user?._id ?? d._id
+    return {
+        ...d,
+        user: { ...d.user, _id: userId },
+        username: d.user?.username ?? username,
+        name: d.name ?? undefined,
+    }
 }
 
 /* ── Skeleton ── */
@@ -210,9 +217,9 @@ export default function PublicProfileView({ username }: { username: string }) {
                                             {displayName}
                                         </span>
                                     </div>
-                                    <h1 className="font-nothing text-4xl md:text-6xl tracking-[0.05em] text-black dark:text-white uppercase leading-[0.9]">
+                                    <h2 className="font-nothing text-4xl md:text-6xl tracking-[0.2em] text-black dark:text-white uppercase leading-[0.9]">
                                         {profile.username}
-                                    </h1>
+                                    </h2>
                                 </div>
 
                                 {/* Share button */}
@@ -317,12 +324,14 @@ export default function PublicProfileView({ username }: { username: string }) {
                 />
             )}
 
-            {/* ── POSTS SECTION ── */}
-            <PublicProfileTabs
-                userId={profile.user._id}
-                isPrivate={showPrivateWall}
-                username={profile.username}
-            />
+            {/* ── POSTS SECTION ── only render when userId is confirmed */}
+            {profile.user._id && (
+                <PublicProfileTabs
+                    userId={profile.user._id}
+                    isPrivate={showPrivateWall}
+                    username={profile.username}
+                />
+            )}
         </div>
     )
 }

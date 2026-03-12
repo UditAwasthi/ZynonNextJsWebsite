@@ -426,6 +426,7 @@ export default function PublicPostsGrid({ userId, isPrivate = false, username }:
     const sentinelRef = useRef<HTMLDivElement>(null)
 
     const fetchPage = useCallback(async (cur?: string) => {
+        if (!userId) return                              // ← never fire with undefined userId
         const isFirst = !cur
         isFirst ? setLoading(true) : setLoadingMore(true)
         const cacheKey = `pub:${userId}:${cur ?? ""}`
@@ -446,6 +447,7 @@ export default function PublicPostsGrid({ userId, isPrivate = false, username }:
     }, [userId])
 
     useEffect(() => {
+        if (!userId) return                              // ← guard: wait until userId is defined
         if (isPrivate) { setLoading(false); return }
         setPosts([]); setCursor(null); setHasMore(false)
         fetchPage()

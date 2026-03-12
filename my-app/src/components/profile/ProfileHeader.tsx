@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { MapPin, Globe, Lock, Edit3, Share2, ShieldCheck, RefreshCw,Calendar,Pencil } from "lucide-react"
+import { MapPin, Globe, Lock, Edit3, Check, Share2, ShieldCheck, RefreshCw, Calendar, Pencil } from "lucide-react"
 import Link from "next/link"
 import api from "../../lib/api/api"
 import { cache, TTL } from "../../lib/cache"
@@ -91,9 +91,16 @@ export const ProfileHeaderSkeleton = () => (
 /* ─── PROFILE HEADER ─── */
 export function ProfileHeader() {
     const { profile, refreshing, refetch } = useProfile()
+    const [copied, setCopied] = useState(false)
 
     if (!profile) return <ProfileHeaderSkeleton />
+    const handleShare = () => {
+        const url = `${window.location.origin}/profile/${profile?.user?.username}`
+        navigator.clipboard?.writeText(url)
 
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
     return (
         <div className="relative w-full max-w-7xl mx-auto overflow-hidden bg-white dark:bg-[#0D0D0D] border border-zinc-200/80 dark:border-white/[0.06] rounded-[28px] font-mono shadow-lg dark:shadow-2xl transition-colors duration-300">
 
@@ -125,10 +132,10 @@ export function ProfileHeader() {
                         <div className="relative">
                             {/* Dot halo — light */}
                             <div className="absolute -inset-3 rounded-[28px] opacity-[0.12] dark:hidden pointer-events-none"
-                                 style={{ backgroundImage: "radial-gradient(circle, black 1px, transparent 1px)", backgroundSize: "6px 6px" }} />
+                                style={{ backgroundImage: "radial-gradient(circle, black 1px, transparent 1px)", backgroundSize: "6px 6px" }} />
                             {/* Dot halo — dark */}
                             <div className="absolute -inset-3 rounded-[28px] opacity-20 hidden dark:block pointer-events-none"
-                                 style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "6px 6px" }} />
+                                style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "6px 6px" }} />
 
                             <div className="relative w-[88px] h-[88px] md:w-[100px] md:h-[100px] rounded-[22px] overflow-hidden border border-zinc-200 dark:border-white/10 bg-zinc-100 dark:bg-[#111]">
                                 <img
@@ -138,7 +145,7 @@ export function ProfileHeader() {
                                 />
                                 {/* Scanlines */}
                                 <div className="absolute inset-0 pointer-events-none"
-                                     style={{ background: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px)" }} />
+                                    style={{ background: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px)" }} />
                             </div>
                             {profile.isVerified && (
                                 <div className="absolute -bottom-2 -right-2 bg-[#FF0000] w-6 h-6 rounded-full border-2 border-white dark:border-[#0D0D0D] flex items-center justify-center">
@@ -165,7 +172,7 @@ export function ProfileHeader() {
                                     </span>
                                 </div>
                                 {/* Username — font-nothing, matches "Zynon" logo treatment in Sidebar */}
-                                <h1 className="font-nothing text-4xl md:text-6xl tracking-[0.05em] text-black dark:text-white uppercase leading-[0.9]">
+                                <h1 className="font-nothing text-4xl md:text-6xl tracking-[0.01em] text-black dark:text-white uppercase leading-[0.9]">
                                     {profile.user.username}
                                 </h1>
                             </div>
@@ -231,12 +238,24 @@ export function ProfileHeader() {
                                 >
                                     <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
                                 </button>
-                                {/* Share — matches the "Abort / Stay Logged In" footer button style */}
-                                <button className="group flex items-center gap-3 px-5 py-2.5 border border-zinc-200 dark:border-zinc-800 hover:border-black dark:hover:border-white hover:bg-black dark:hover:bg-white transition-all">
-                                    <Share2 size={13} className="text-zinc-500 dark:text-zinc-400 group-hover:text-white dark:group-hover:text-black transition-colors" />
-                                    <span className="text-[9px] font-bold tracking-[0.25em] uppercase text-zinc-500 dark:text-zinc-400 group-hover:text-white dark:group-hover:text-black transition-colors">
-                                        Share
-                                    </span>
+                                {/* Share button */}
+                                <button
+                                    onClick={handleShare}
+                                    className="shrink-0 group flex items-center gap-3 px-5 py-2.5 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-white/[0.03] hover:bg-black dark:hover:bg-white hover:border-black dark:hover:border-white transition-all duration-300"
+                                >
+                                    {copied ? (
+                                        <>
+                                            <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-emerald-500">Copied</span>
+                                            <Check size={12} className="text-emerald-500" />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-zinc-500 dark:text-zinc-400 group-hover:text-white dark:group-hover:text-black transition-colors">
+                                                Share
+                                            </span>
+                                            <Share2 size={12} className="text-zinc-400 dark:text-zinc-600 group-hover:text-white dark:group-hover:text-black transition-colors" />
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </div>
