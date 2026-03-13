@@ -8,6 +8,7 @@ import { swr, cache } from "../../lib/cache"
 import FollowListModal from "./FollowListModal"
 import PublicPostsGrid from "./PublicPostsGrid"
 import MessageButton from "../messaging/MessageButton"
+import { getFollowStatus } from "../../lib/api/followApi"
 
 interface ProfileUser { _id: string; username: string }
 
@@ -100,6 +101,18 @@ export default function PublicProfileView({ username }: { username: string }) {
             () => setError(true),
         ).finally(() => setLoading(false))
     }, [username])
+
+    // Fetch the real follow status from the API — viewerFollowState defaults to
+    // "not_following" which would wrongly show the private wall if already following
+    useEffect(() => {
+        if (!profile?.user._id) return
+        getFollowStatus(profile.user._id)
+            .then(res => {
+                const status = res.data?.data?.status as FollowState | undefined
+                if (status) setViewerFollowState(status)
+            })
+            .catch(() => { /* not logged in or failed — leave as not_following */ })
+    }, [profile?.user._id])
 
     const handleFollowChange = (delta: number) => {
         setFollowersCount(prev => Math.max(0, prev + delta))

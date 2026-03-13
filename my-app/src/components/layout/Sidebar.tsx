@@ -13,6 +13,9 @@ import {
 import { useLayout } from "../../context/LayoutContext";
 import CreatePageContent from "../create/CreatePageContent";
 import api from "../../lib/api/api";
+import { NotificationPanel } from "../notifications/Notificationpanel";
+import { useNotifications } from "../../hooks/useNotifications";
+import { useUnreadMessages } from "../../hooks/useUnreadMessages";
 
 const iconMap: any = { Home, Search, Compass, MessageSquare, Play, Heart, PlusSquare, User };
 
@@ -43,7 +46,6 @@ function LogoutModal({ open, onClose }: { open: boolean; onClose: () => void }) 
     const handleLogout = async (type: "single" | "all") => {
         setLoading(type);
         await performLogout(type === "all" ? "/auth/logout-all" : "/auth/logout");
-        // No need to reset — page will redirect
     };
 
     if (!open || typeof document === "undefined") return null;
@@ -64,10 +66,6 @@ function LogoutModal({ open, onClose }: { open: boolean; onClose: () => void }) 
                 @keyframes lgSlideIn {
                     from { opacity: 0; transform: translateY(16px) scale(0.98); }
                     to   { opacity: 1; transform: translateY(0) scale(1); }
-                }
-                @keyframes lgSlideOut {
-                    from { opacity: 1; transform: translateY(0) scale(1); }
-                    to   { opacity: 0; transform: translateY(16px) scale(0.98); }
                 }
                 @keyframes spin { to { transform: rotate(360deg); } }
                 .lg-spinner {
@@ -105,7 +103,6 @@ function LogoutModal({ open, onClose }: { open: boolean; onClose: () => void }) 
 
                 {/* Body */}
                 <div className="p-5 space-y-2">
-
                     {/* This device only */}
                     <button
                         onClick={() => handleLogout("single")}
@@ -149,7 +146,6 @@ function LogoutModal({ open, onClose }: { open: boolean; onClose: () => void }) 
                             </p>
                         </div>
                     </button>
-
                 </div>
 
                 {/* Footer */}
@@ -228,8 +224,16 @@ export const Sidebar = () => {
     const [showMore, setShowMore] = useState(false);
     const [createOpen, setCreateOpen] = useState(false);
     const [logoutOpen, setLogoutOpen] = useState(false);
+    const [notifOpen, setNotifOpen] = useState(false);
     const moreMenuRef = useRef<HTMLDivElement>(null);
     const { isCollapsed, setIsCollapsed } = useLayout();
+
+    // Pull unreadCount from the hook (panel=false so it only fetches count)
+    const { unreadCount } = useNotifications(false);
+    const { hasUnreadMessages } = useUnreadMessages();
+
+    // Sidebar pixel width for panel positioning
+    const sidebarWidth = isCollapsed ? 80 : 256;
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -244,8 +248,7 @@ export const Sidebar = () => {
     return (
         <div className="relative z-50">
             <aside
-                className={`fixed left-0 top-0 h-screen border-r border-zinc-300 dark:border-zinc-800 bg-white dark:bg-black transition-all duration-500 ease-in-out ${isCollapsed ? "w-20" : "w-64"
-                    }`}
+                className={`fixed left-0 top-0 h-screen border-r border-zinc-300 dark:border-zinc-800 bg-white dark:bg-black transition-all duration-500 ease-in-out ${isCollapsed ? "w-20" : "w-64"}`}
             >
                 <div className="absolute inset-0 nothing-dot-grid opacity-[0.03] dark:opacity-[0.07] pointer-events-none" />
 
@@ -283,36 +286,28 @@ export const Sidebar = () => {
                             const Icon = iconMap[item.icon];
                             const isActive = pathname === item.href;
                             const isCreate = item.icon === "PlusSquare";
+                            const isNotif = item.icon === "Heart";
+                            const isMessage = item.icon === "MessageSquare";
+
+                            // ── Create button ────────────────────────────────
                             if (isCreate) {
                                 return (
                                     <div key={item.href} className="py-4 my-2 px-2">
                                         <button
                                             onClick={() => setCreateOpen(true)}
                                             className={`
-                    relative w-full flex items-center gap-4 p-3 
-                    transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]
-                    group rounded-[22px] overflow-hidden
-                    ${isCollapsed ? "justify-center h-12 w-12 mx-auto" : "px-4 h-14"}
-                    
-                    /* Nothing OS 3.0 Aesthetic: Solid Block */
-                    bg-black dark:bg-white 
-                    text-white dark:text-black
-                    
-                    /* Hardware Shadow Effect */
-                    shadow-[0_10px_20px_-10px_rgba(0,0,0,0.5)] dark:shadow-[0_10px_20px_-10px_rgba(255,255,255,0.2)]
-                    
-                    /* Hover States */
-                    hover:scale-[1.03] 
-                    hover:shadow-[0_15px_25px_-10px_rgba(0,0,0,0.6)]
-                    active:scale-95
-                `}
+                                                relative w-full flex items-center gap-4 p-3
+                                                transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)]
+                                                group rounded-[22px] overflow-hidden
+                                                ${isCollapsed ? "justify-center h-12 w-12 mx-auto" : "px-4 h-14"}
+                                                bg-black dark:bg-white text-white dark:text-black
+                                                shadow-[0_10px_20px_-10px_rgba(0,0,0,0.5)] dark:shadow-[0_10px_20px_-10px_rgba(255,255,255,0.2)]
+                                                hover:scale-[1.03] hover:shadow-[0_15px_25px_-10px_rgba(0,0,0,0.6)] active:scale-95
+                                            `}
                                         >
-                                            {/* 1. Nothing Signature Red Dot (Top Right) */}
                                             <div className="absolute top-3 right-3">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-[#FF0000] shadow-[0_0_8px_#FF0000] animate-pulse" />
                                             </div>
-
-                                            {/* 2. Tactical Dot Matrix (Subtle background texture) */}
                                             <div
                                                 className="absolute inset-0 opacity-[0.15] pointer-events-none"
                                                 style={{
@@ -320,30 +315,54 @@ export const Sidebar = () => {
                                                     backgroundSize: '4px 4px'
                                                 }}
                                             />
-
-                                            {/* 3. Icon: Inverted Ring Style */}
                                             <div className="relative z-10 shrink-0 flex items-center justify-center">
                                                 <div className="w-8 h-8 rounded-full border border-white/20 dark:border-black/10 flex items-center justify-center group-hover:bg-white dark:group-hover:bg-black group-hover:text-black dark:group-hover:text-white transition-all duration-300">
-                                                    <PlusSquare
-                                                        size={16}
-                                                        strokeWidth={2}
-                                                        className="group-hover:rotate-90 transition-transform duration-500"
-                                                    />
+                                                    <PlusSquare size={16} strokeWidth={2} className="group-hover:rotate-90 transition-transform duration-500" />
                                                 </div>
                                             </div>
-
-                                            {/* 4. Label: NDOT-style Spacing */}
                                             <div className={`relative z-10 transition-all duration-500 overflow-hidden ${isCollapsed ? "opacity-0 w-0" : "opacity-100 w-24 ml-1"}`}>
-                                                <span className="text-[10px] font-black tracking-[0.4em] uppercase whitespace-nowrap">
-                                                    {item.label}
-                                                </span>
-                                                {/* Industrial line detail */}
+                                                <span className="text-[10px] font-black tracking-[0.4em] uppercase whitespace-nowrap">{item.label}</span>
                                                 <div className="mt-0.5 h-[1px] w-4 bg-current opacity-30 group-hover:w-full transition-all duration-500" />
                                             </div>
                                         </button>
                                     </div>
                                 );
                             }
+
+                            // ── Notifications button ─────────────────────────
+                            if (isNotif) {
+                                const isNotifActive = notifOpen;
+                                return (
+                                    <button
+                                        key={item.href}
+                                        onClick={() => setNotifOpen(prev => !prev)}
+                                        className={`w-full cursor-pointer flex items-center gap-2 p-3 transition-all duration-200 group relative rounded-lg ${isNotifActive
+                                            ? "text-black dark:text-white bg-zinc-200/80 dark:bg-zinc-900/80 shadow-sm"
+                                            : "text-zinc-700 dark:text-zinc-400 hover:text-black dark:hover:text-white"
+                                            }`}
+                                    >
+                                        {isNotifActive && <div className="absolute left-0 w-[0px] h-6 bg-black dark:bg-white" />}
+
+                                        {/* Icon + badge */}
+                                        <div className="relative shrink-0">
+                                            <Heart size={18} strokeWidth={isNotifActive ? 2.5 : 1.5} />
+                                            {unreadCount > 0 && (
+                                                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-[3px] flex items-center justify-center bg-red-500 text-white text-[9px] font-black rounded-full border-2 border-white dark:border-black leading-none pointer-events-none">
+                                                    {unreadCount > 99 ? "99+" : unreadCount}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className={`transition-all duration-500 overflow-hidden ${isCollapsed ? "opacity-0 w-0" : "opacity-100 w-30"}`}>
+                                            <span className={`text-[10px] font-bold tracking-[0.2em] uppercase whitespace-nowrap ${isNotifActive ? "opacity-100" : "opacity-70 group-hover:opacity-100"}`}>
+                                                {item.label}
+                                            </span>
+                                        </div>
+                                    </button>
+                                );
+                            }
+
+                            // ── Regular nav link ─────────────────────────────
                             return (
                                 <Link
                                     key={item.href}
@@ -354,8 +373,11 @@ export const Sidebar = () => {
                                         }`}
                                 >
                                     {isActive && <div className="absolute left-0 w-[2.5px] h-6 bg-black dark:bg-white" />}
-                                    <div className="shrink-0">
+                                    <div className="relative shrink-0">
                                         <Icon size={18} strokeWidth={isActive ? 2.5 : 1.5} />
+                                        {isMessage && hasUnreadMessages && (
+                                            <span className="absolute -top-1 -right-1 w-[9px] h-[9px] rounded-full bg-red-500 border-2 border-white dark:border-black pointer-events-none" />
+                                        )}
                                     </div>
                                     <div className={`transition-all duration-500 overflow-hidden ${isCollapsed ? "opacity-0 w-0" : "opacity-100 w-40"}`}>
                                         <span className={`text-[10px] font-bold tracking-[0.2em] uppercase whitespace-nowrap ${isActive ? "opacity-100" : "opacity-70 group-hover:opacity-100"}`}>
@@ -407,6 +429,11 @@ export const Sidebar = () => {
 
             <CreateModal open={createOpen} onClose={() => setCreateOpen(false)} />
             <LogoutModal open={logoutOpen} onClose={() => setLogoutOpen(false)} />
+            <NotificationPanel
+                open={notifOpen}
+                onClose={() => setNotifOpen(false)}
+                sidebarWidth={sidebarWidth}
+            />
         </div>
     );
 };

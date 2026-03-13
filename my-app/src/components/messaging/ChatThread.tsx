@@ -1,8 +1,30 @@
 "use client";
 import { useState, useRef, useEffect, useCallback, memo } from "react";
 import { Phone, Video, MoreHorizontal, ChevronLeft, ArrowUp, Loader2, Paperclip, X, FileIcon, Play, Pause, Volume2, VolumeX, Maximize2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { getMessages, sendMessage, markMessagesSeen, addReaction, uploadChatMedia } from "../../lib/api/chatApi";
 import { getSocket } from "../../lib/socket";
+import api from "../../lib/api/api";
+
+// ── Profile picture cache (shared with InboxList) ────────────────────────────
+const profilePicCache = new Map<string, string | null>();
+async function fetchProfilePic(username: string): Promise<string | null> {
+    if (profilePicCache.has(username)) return profilePicCache.get(username) ?? null;
+    try {
+        const { data } = await api.get(`/profile/${username}`);
+        const pic =
+            data?.data?.profilePicture ??
+            data?.data?.profile?.profilePicture ??
+            data?.profilePicture ??
+            null;
+        profilePicCache.set(username, pic);
+        return pic;
+    } catch {
+        profilePicCache.set(username, null);
+        return null;
+    }
+}
 
 interface Message {
     _id: string;
@@ -30,7 +52,7 @@ interface MediaAttachment {
 
 interface Thread {
     threadId: string;
-    user: { _id: string; username: string } | null;
+    user: { _id: string; username: string; profilePicture?: string } | null;
 }
 
 interface Props {
@@ -375,7 +397,9 @@ const VideoPlayer = memo(function VideoPlayer({ src, radius, isUploading, upload
 });
 
 export default function ChatThread({ thread, onBack, currentUserId, token }: Props) {
+    const router = useRouter();
     const [messages, setMessages] = useState<Message[]>([]);
+    const [profilePic, setProfilePic] = useState<string | null>(thread.user?.profilePicture ?? null);
     const [inputValue, setInputValue] = useState("");
     const [loading, setLoading] = useState(true);
     const [isTyping, setIsTyping] = useState(false);
@@ -393,6 +417,14 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const ownedMessageIds = useRef<Set<string>>(new Set());
     const username = thread.user?.username || "Unknown";
+
+    // ── Fetch profile picture (cached) ────────────────────────────────────────
+    useEffect(() => {
+        if (!thread.user?.username) return;
+        fetchProfilePic(thread.user.username).then(pic => {
+            if (pic) setProfilePic(pic);
+        });
+    }, [thread.user?.username]);
 
     // ── Load initial messages ─────────────────────────────────────────────────
     useEffect(() => {
@@ -714,17 +746,38 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                     >
                         <ChevronLeft size={20} />
                     </button>
-                    <div className="relative">
+                    {/* Avatar — clickable → profile */}
+                    <button
+                        onClick={() => router.push(`/profile/${username}`)}
+                        className="relative shrink-0 focus:outline-none"
+                    >
                         <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0 ring-2 ring-white dark:ring-zinc-800"
-                            style={{ backgroundColor: getAvatarColor(username) }}
+                            className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-xs ring-2 ring-white dark:ring-zinc-800"
+                            style={{ backgroundColor: profilePic ? undefined : getAvatarColor(username) }}
                         >
-                            {username.slice(0, 2).toUpperCase()}
+                            {profilePic ? (
+                                <Image
+                                    src={profilePic}
+                                    alt={username}
+                                    width={36}
+                                    height={36}
+                                    className="w-full h-full object-cover"
+                                    unoptimized
+                                />
+                            ) : (
+                                username.slice(0, 2).toUpperCase()
+                            )}
                         </div>
                         <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white dark:border-[#0a0a0a]" />
-                    </div>
+                    </button>
                     <div>
-                        <p className="font-semibold text-sm text-black dark:text-white leading-none">{username}</p>
+                        {/* Username — clickable → profile */}
+                        <button
+                            onClick={() => router.push(`/profile/${username}`)}
+                            className="font-semibold text-sm text-black dark:text-white leading-none hover:underline focus:outline-none"
+                        >
+                            {username}
+                        </button>
                         <p className={`text-[10px] font-medium mt-0.5 transition-colors ${isTyping ? "text-emerald-500" : "text-zinc-400"}`}>
                             {isTyping ? "typing..." : "active now"}
                         </p>
