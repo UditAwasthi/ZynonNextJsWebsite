@@ -726,8 +726,15 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
     };
 
     return (
-        <div className="flex flex-col h-full w-full bg-white dark:bg-[#0a0a0a] relative overflow-hidden"
-             style={{ maxHeight: "100dvh" }}>
+        <div
+            className="flex flex-col bg-white dark:bg-[#0a0a0a] overflow-hidden
+                       fixed left-0 right-0 z-40
+                       md:static md:inset-auto md:z-auto md:h-full md:w-full md:relative"
+            style={{
+                top: "calc(3.5rem + env(safe-area-inset-top, 0px))",
+                bottom: "calc(4rem + env(safe-area-inset-bottom, 0px))",
+            } as React.CSSProperties}
+        >
 
             {/* Subtle dot grid */}
             <div
@@ -739,8 +746,8 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
             />
 
             {/* ── Header ── */}
-            <div className="relative z-10 px-2 sm:px-4 border-b border-zinc-100 dark:border-zinc-800/60 flex items-center justify-between bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-xl shrink-0"
-                 style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0.75rem))", paddingBottom: "0.75rem" }}>
+            <div className="shrink-0 px-2 sm:px-4 border-b border-zinc-100 dark:border-zinc-800/60 flex items-center justify-between bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-xl"
+                 style={{ paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
                 <div className="flex items-center gap-1 sm:gap-3 min-w-0">
                     <button
                         onClick={onBack}
@@ -795,7 +802,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
             </div>
 
             {/* ── Messages ── */}
-            <div className="relative z-10 flex-1 overflow-y-auto chat-no-scrollbar px-3 sm:px-4 py-4 space-y-1">
+            <div className="flex-1 overflow-y-auto chat-no-scrollbar px-3 sm:px-4 py-4 space-y-1 overscroll-contain">
 
                 {hasMore && !loading && (
                     <div className="flex justify-center pb-2">
@@ -1048,8 +1055,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
             </div>
 
             {/* ── Input ── */}
-            <div className="relative z-10 border-t border-zinc-100 dark:border-zinc-800/60 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-xl shrink-0"
-                 style={{ paddingBottom: "max(0rem, env(safe-area-inset-bottom, 0rem))" }}>
+            <div className="shrink-0 border-t border-zinc-100 dark:border-zinc-800/60 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-xl">
 
                 {/* Attachment preview */}
                 {attachment && (

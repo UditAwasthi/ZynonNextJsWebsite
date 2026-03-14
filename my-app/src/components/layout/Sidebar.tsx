@@ -363,9 +363,7 @@ export const Sidebar = () => {
                                         <div className="relative shrink-0">
                                             <Heart size={18} strokeWidth={isNotifActive ? 2.5 : 1.5} />
                                             {unreadCount > 0 && (
-                                                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-[3px] flex items-center justify-center bg-red-500 text-white text-[9px] font-black rounded-full border-2 border-white dark:border-black leading-none pointer-events-none">
-                                                    {unreadCount > 99 ? "99+" : unreadCount}
-                                                </span>
+                                                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-black pointer-events-none" />
                                             )}
                                         </div>
 
@@ -496,9 +494,7 @@ export const Sidebar = () => {
                             className={`relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${notifOpen ? "text-black dark:text-white bg-zinc-100 dark:bg-zinc-900" : "text-zinc-500 dark:text-zinc-400"}`}>
                             <Heart size={20} strokeWidth={notifOpen ? 2.5 : 1.5} />
                             {unreadCount > 0 && (
-                                <span className="absolute top-1 right-1 min-w-[15px] h-[15px] px-[3px] flex items-center justify-center bg-red-500 text-white text-[8px] font-black rounded-full border-2 border-white dark:border-black leading-none">
-                                    {unreadCount > 99 ? "99+" : unreadCount}
-                                </span>
+                                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-black" />
                             )}
                         </button>
 
