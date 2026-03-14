@@ -222,9 +222,29 @@ export function useNotifications(panelOpen: boolean) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Fetch unread count on mount — only once, only if token exists
+    // Fetch unread count on mount — only once, only if token exists.
+    // Two retry paths handle the login race where this mounts before the token
+    // is written to localStorage:
+    //   1. Same-tab: a 1 s delayed retry catches the common case where the
+    //      auth flow writes the token just after the first render.
+    //   2. Cross-tab: storage event fires when another tab logs in.
     useEffect(() => {
         fetchUnreadCount();
+
+        // Same-tab delayed retry (token may arrive ~ms after mount)
+        const timer = setTimeout(() => fetchUnreadCount(), 1000);
+
+        // Cross-tab retry
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === "accessToken" && e.newValue) {
+                fetchUnreadCount();
+            }
+        };
+        window.addEventListener("storage", handleStorage);
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener("storage", handleStorage);
+        };
     }, [fetchUnreadCount]);
 
     // When panel opens: always do a fresh API fetch

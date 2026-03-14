@@ -12,6 +12,11 @@ import { getFollowStatus } from "../../lib/api/followApi"
 
 interface ProfileUser { _id: string; username: string }
 
+export interface MutualFollower {
+    username: string
+    profilePicture?: string
+}
+
 interface PublicProfile {
     _id: string
     user: ProfileUser
@@ -30,21 +35,38 @@ interface PublicProfile {
     createdAt: string
     category?: string
     profileVisibility?: string
+    mutualFollowersCount?: number
+    mutualFollowers?: MutualFollower[]
 }
 
 async function fetchPublicProfile(username: string): Promise<PublicProfile> {
     const base = process.env.NEXT_PUBLIC_API_BASE || "https://zynon.onrender.com/api/"
-    const res = await fetch(`${base}profile/${username}`)
+
+    // Wrap in try/catch — Edge's Tracking Prevention throws a SecurityError on
+    // localStorage access when the page is loaded in a third-party context.
+    // Without this, the entire fetchPublicProfile call crashes and the profile
+    // renders as NotFound even though the API is perfectly reachable.
+    let token: string | null = null
+    try {
+        token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
+    } catch { /* storage blocked — proceed unauthenticated */ }
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
+
+    const res = await fetch(`${base}profile/${username}`, { headers })
     if (!res.ok) throw new Error("Profile not found")
     const json = await res.json()
-    const d = json.data
-    // Normalize: ensure user._id is always populated (fallback to profile doc _id)
+
+    // Actual response shape:
+    // { success, data: { profile: {...}, mutualFollowers: [...], mutualFollowersCount: N } }
+    const d    = json.data.profile
     const userId = d.user?._id ?? d._id
     return {
         ...d,
         user: { ...d.user, _id: userId },
         username: d.user?.username ?? username,
         name: d.name ?? undefined,
+        mutualFollowersCount: json.data.mutualFollowersCount ?? 0,
+        mutualFollowers:      json.data.mutualFollowers      ?? [],
     }
 }
 
@@ -210,9 +232,14 @@ export default function PublicProfileView({ username }: { username: string }) {
                                 )}
                             </div>
 
-                            {/* Follow + Message */}
-                            <FollowButton userId={profile.user._id} onFollowChange={handleFollowChange} />
-                            <MessageButton userId={profile.user._id} />
+                            {/* Follow + Message — only mount once _id is resolved;
+                                prevents getFollowStatus firing with userId=undefined */}
+                            {profile.user._id && (
+                                <>
+                                    <FollowButton userId={profile.user._id} onFollowChange={handleFollowChange} />
+                                    <MessageButton userId={profile.user._id} />
+                                </>
+                            )}
                         </div>
 
                         {/* Content Column */}
@@ -324,12 +351,14 @@ export default function PublicProfileView({ username }: { username: string }) {
                 postsCount={profile.postsCount}
                 followersCount={followersCount}
                 followingCount={profile.followingCount}
+                mutualFollowersCount={profile.mutualFollowersCount ?? 0}
+                mutualFollowers={profile.mutualFollowers ?? []}
                 onFollowersClick={() => setModal("followers")}
                 onFollowingClick={() => setModal("following")}
             />
 
             {/* ── FOLLOW LIST MODAL ── */}
-            {modal && (
+            {modal && profile.user._id && (
                 <FollowListModal
                     userId={profile.user._id}
                     mode={modal}

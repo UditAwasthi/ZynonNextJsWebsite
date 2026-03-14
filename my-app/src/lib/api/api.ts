@@ -17,17 +17,23 @@ const processQueue = (error: any, token: string | null) => {
   failedQueue = [];
 };
 
+// Safe localStorage helpers — Edge Tracking Prevention throws SecurityError
+const getToken = (): string | null => {
+  try {
+    return typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  } catch { return null; }
+};
+const setToken = (t: string) => {
+  try { localStorage.setItem("accessToken", t); } catch { }
+};
+const clearToken = () => {
+  try { localStorage.removeItem("accessToken"); } catch { }
+};
+
 api.interceptors.request.use((config) => {
-  // Fix 1: guard localStorage access — safe on both server and client
-  const token =
-    typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
+  const token = getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   config.headers["x-client-type"] = "web";
-
   return config;
 });
 
@@ -36,63 +42,67 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Prevent refresh loop — if the refresh route itself 401s, bail immediately
-    if (originalRequest.url?.includes("auth/refresh")) {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("accessToken");
-        window.location.replace("/login");
-      }
+    // Never retry the refresh call itself — bail straight to login
+    if (originalRequest._isRefreshCall) {
+      clearToken();
+      if (typeof window !== "undefined") window.location.replace("/login");
       return Promise.reject(error);
     }
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
+    // Only handle 401s, and only once per request (_retry flag)
+    if (error.response?.status !== 401 || originalRequest._retry) {
+      return Promise.reject(error);
+    }
+    originalRequest._retry = true;
 
-      // If a refresh is already in flight, queue this request
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            return api(originalRequest);
-          })
-          .catch((err) => Promise.reject(err));
-      }
-
-      isRefreshing = true;
-
-      try {
-        // Fix 2: window.location.origin is correct here — this hits the Next.js
-        // proxy route at /api/auth/refresh which reads the httpOnly cookie.
-        // Using BASE_URL would bypass the proxy and lose the cookie.
-        const { data } = await axios.post(
-          `${window.location.origin}/api/auth/refresh`,
-          {},
-          { withCredentials: true }  // ← add this
-        );
-        const newAccessToken = data.data.accessToken;
-
-        localStorage.setItem("accessToken", newAccessToken);
-        api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
-
-        processQueue(null, newAccessToken);
-
-        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+    // If a refresh is already in flight, queue this request until it resolves
+    if (isRefreshing) {
+      return new Promise<string>((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      }).then((token) => {
+        originalRequest.headers.Authorization = `Bearer ${token}`;
         return api(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError, null);
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("accessToken");
-          window.location.replace("/login");
-        }
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
+      });
     }
 
-    return Promise.reject(error);
+    isRefreshing = true;
+
+    try {
+      // Hit the Next.js proxy route — it reads the httpOnly refresh cookie.
+      // Mark with _isRefreshCall so a 401 on this call bails immediately above.
+      const refreshConfig = {
+        withCredentials: true,
+        _isRefreshCall: true,  // custom flag — interceptor checks this
+      } as any;
+
+      const { data } = await axios.post(
+        `${window.location.origin}/api/auth/refresh`,
+        {},
+        refreshConfig,
+      );
+
+      const newToken: string = data.data.accessToken;
+      setToken(newToken);
+      api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+
+      // Resolve all queued requests with the new token
+      processQueue(null, newToken);
+
+      originalRequest.headers.Authorization = `Bearer ${newToken}`;
+      return api(originalRequest);
+
+    } catch (refreshError) {
+      // Refresh failed — flush queue with error, clear session, go to login
+      processQueue(refreshError, null);
+      clearToken();
+      if (typeof window !== "undefined") window.location.replace("/login");
+      return Promise.reject(refreshError);
+
+    } finally {
+      // Reset only after everything above is fully settled.
+      // We use a microtask so the flag stays true until the retry is dispatched.
+      Promise.resolve().then(() => { isRefreshing = false; });
+    }
   }
 );
 

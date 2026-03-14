@@ -9,12 +9,15 @@ export default function PublicProfileRedirect({ username }: { username: string }
     const router = useRouter()
 
     useEffect(() => {
-        // Read cached profile — already stored by useProfile hook
+        // useProfile stores res.data.data directly under "profile:me"
+        // Shape: { user: { username, ... }, ... }  — no outer "data" wrapper
         try {
             const raw = localStorage.getItem("zynon:profile:me")
             if (!raw) return
-            const { data } = JSON.parse(raw)
-            if (data?.user?.username === username) {
+            const entry = JSON.parse(raw)
+            // cache.ts wraps every entry as { data, ts, ttl }
+            const profile = entry?.data
+            if (profile?.user?.username === username) {
                 router.replace("/profile")
             }
         } catch { }

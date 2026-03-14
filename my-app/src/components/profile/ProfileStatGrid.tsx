@@ -38,14 +38,20 @@ export function ProfileStats() {
     const userId = (profile.user as any)?._id ?? null
 
     const handleFollowChange = (delta: number, mode: "followers" | "following") => {
-        if (mode === "followers") setFollowersDelta(prev => prev + delta)
-        else setFollowingDelta(prev => prev + delta)
-
-        // Patch the cache so counts survive re-renders without a refetch
-        patchProfileCache({
-            followersCount: profile.followersCount + followersDelta + (mode === "followers" ? delta : 0),
-            followingCount: profile.followingCount + followingDelta + (mode === "following" ? delta : 0),
-        })
+        if (mode === "followers") {
+            setFollowersDelta(prev => {
+                const next = prev + delta
+                // Patch cache with the correct accumulated value
+                patchProfileCache({ followersCount: Math.max(0, profile.followersCount + next) })
+                return next
+            })
+        } else {
+            setFollowingDelta(prev => {
+                const next = prev + delta
+                patchProfileCache({ followingCount: Math.max(0, profile.followingCount + next) })
+                return next
+            })
+        }
     }
 
     const stats = [

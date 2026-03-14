@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react"
 import { X, Loader2, UserCircle2 } from "lucide-react"
 import { getFollowers, getFollowing } from "../../lib/api/followApi"
-import api from "../../lib/api/api"
 import Link from "next/link"
 import FollowButton from "./FollowButton"
+import { getCurrentUserId } from "../../lib/auth"
 
 type Mode = "followers" | "following"
 
@@ -29,18 +29,16 @@ export default function FollowListModal({ userId, mode, onClose, onFollowChange 
     const [error, setError] = useState(false)
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
-    // Get logged-in user's ID for self-detection
+    // Decode the viewer's own ID from the JWT — no network request needed,
+    // no risk of a 401 before the token is ready on the first render.
     useEffect(() => {
-        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null
-        if (!token) return
-
-        api.get("/profile/me")
-            .then((res) => setCurrentUserId(res.data.data?.user?._id ?? null))
-            .catch(() => setCurrentUserId(null))
+        setCurrentUserId(getCurrentUserId() || null)
     }, [])
 
     // Fetch followers/following list
     useEffect(() => {
+        if (!userId) return                              // ← guard: never fire with undefined userId
+
         setLoading(true)
         setError(false)
 
