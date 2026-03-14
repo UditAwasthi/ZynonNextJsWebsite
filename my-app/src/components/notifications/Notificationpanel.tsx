@@ -3,28 +3,40 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Bell, CheckCheck, Loader } from "lucide-react";
-import { useNotifications } from "../../hooks/useNotifications";
 import { NotificationItem } from "./Notificationitem";
+import type { Notification } from "./types";
 
 interface Props {
     open: boolean;
     onClose: () => void;
     sidebarWidth: number;
+    // All notification state is owned by Sidebar via useNotifications(notifOpen).
+    // The panel is purely presentational — no hook instance here.
+    notifications: Notification[];
+    unreadCount: number;
+    loading: boolean;
+    loadingMore: boolean;
+    hasMore: boolean;
+    error: string | null;
+    markRead: (ids: string[]) => void;
+    markAllRead: () => void;
+    loadMore: () => void;
 }
 
-export function NotificationPanel({ open, onClose, sidebarWidth }: Props) {
-    const {
-        notifications,
-        unreadCount,
-        loading,
-        loadingMore,
-        hasMore,
-        error,
-        markRead,
-        markAllRead,
-        loadMore,
-    } = useNotifications(open);
-
+export function NotificationPanel({
+    open,
+    onClose,
+    sidebarWidth,
+    notifications,
+    unreadCount,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    markRead,
+    markAllRead,
+    loadMore,
+}: Props) {
     const [mounted, setMounted] = useState(false);
     useEffect(() => { setMounted(true); }, []);
 

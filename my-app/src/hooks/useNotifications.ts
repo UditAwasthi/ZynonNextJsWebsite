@@ -60,7 +60,16 @@ export function useNotifications(panelOpen: boolean) {
     const [error, setError] = useState<string | null>(null);
     const fetchedRef = useRef(false);
 
+    // ── Token guard: don't fire any request without a valid token ──────────────
+    const hasToken = useCallback((): boolean => {
+        if (typeof window === "undefined") return false;
+        return !!localStorage.getItem("accessToken");
+    }, []);
+
     const fetchUnreadCount = useCallback(async () => {
+        // Don't attempt if there's no token — avoids 401 → refresh → reload loop
+        if (!hasToken()) return;
+
         const cached = cache.get<number>(COUNT_KEY);
         if (cached !== null) { setUnreadCount(cached); return; }
         try {
@@ -69,10 +78,13 @@ export function useNotifications(panelOpen: boolean) {
             setUnreadCount(count);
             cache.set(COUNT_KEY, count, 60_000);
         } catch { /* silent */ }
-    }, []);
+    }, [hasToken]);
 
     const fetchNotifications = useCallback(async () => {
         if (fetchedRef.current) return;
+        // Don't attempt if there's no token
+        if (!hasToken()) return;
+
         fetchedRef.current = true;
 
         const stale = cache.getStale<Notification[]>(CACHE_KEY);
@@ -88,8 +100,6 @@ export function useNotifications(panelOpen: boolean) {
             const filtered = list.filter(n => !EXCLUDED_TYPES.includes(n.type));
             const enriched = await enrichWithProfilePictures(filtered);
 
-            // Use API result as the single source of truth — replaces everything
-            // including any socket-pushed items (dedup by _id)
             setNotifications(enriched);
             setNextCursor(cursor);
             setHasMore(!!cursor && list.length === LIMIT);
@@ -104,10 +114,8 @@ export function useNotifications(panelOpen: boolean) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [hasToken]);
 
-    // refresh: re-fetch from API. Does NOT clear socket-added items first —
-    // the API response replaces state entirely, so no duplicates.
     const refresh = useCallback(async () => {
         fetchedRef.current = false;
         setNextCursor(null);
@@ -117,6 +125,8 @@ export function useNotifications(panelOpen: boolean) {
 
     const loadMore = useCallback(async () => {
         if (!nextCursor || loadingMore || !hasMore) return;
+        if (!hasToken()) return;
+
         setLoadingMore(true);
         try {
             const { data } = await api.get("/notifications", {
@@ -128,7 +138,6 @@ export function useNotifications(panelOpen: boolean) {
             const filtered = more.filter(n => !EXCLUDED_TYPES.includes(n.type));
             const enriched = await enrichWithProfilePictures(filtered);
 
-            // Dedup by _id when appending — prevents socket items appearing twice
             setNotifications(prev => {
                 const existingIds = new Set(prev.map(n => n._id));
                 return [...prev, ...enriched.filter(n => !existingIds.has(n._id))];
@@ -138,7 +147,7 @@ export function useNotifications(panelOpen: boolean) {
         } catch { /* silent */ } finally {
             setLoadingMore(false);
         }
-    }, [nextCursor, loadingMore, hasMore]);
+    }, [nextCursor, loadingMore, hasMore, hasToken]);
 
     const markRead = useCallback(async (ids: string[]) => {
         const prevNotifs = notifications;
@@ -175,13 +184,11 @@ export function useNotifications(panelOpen: boolean) {
         }
     }, [notifications, unreadCount]);
 
-    // Socket: real-time push — skip NEW_MESSAGE, dedup by both _id AND actor+type
-    // to prevent duplicate FOLLOW_REQUEST from same user appearing twice
+    // Socket: real-time push — only connect if token exists
     useEffect(() => {
-        const token = typeof window !== "undefined"
-            ? localStorage.getItem("accessToken") : null;
-        if (!token) return;
+        if (!hasToken()) return;
 
+        const token = localStorage.getItem("accessToken")!;
         let socket: ReturnType<typeof getSocket>;
         try { socket = getSocket(token); } catch { return; }
 
@@ -192,12 +199,9 @@ export function useNotifications(panelOpen: boolean) {
             const [enriched] = await enrichWithProfilePictures([newNotif]);
 
             setNotifications(prev => {
-                // Dedup by _id
                 if (prev.some(n => n._id === enriched._id)) return prev;
-                // For FOLLOW_REQUEST: also dedup by actor — one pending request per user
                 if (enriched.type === "FOLLOW_REQUEST") {
                     if (prev.some(n => n.type === "FOLLOW_REQUEST" && n.actor._id === enriched.actor._id)) {
-                        // Replace the existing one with the fresh one
                         return prev.map(n =>
                             n.type === "FOLLOW_REQUEST" && n.actor._id === enriched.actor._id
                                 ? { ...enriched, read: false }
@@ -214,13 +218,16 @@ export function useNotifications(panelOpen: boolean) {
 
         socket.on("notification:new", handler);
         return () => { socket.off("notification:new", handler); };
+    // hasToken is stable (useCallback with no deps), so this is safe
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Fetch unread count on mount — only once, only if token exists
     useEffect(() => {
         fetchUnreadCount();
     }, [fetchUnreadCount]);
 
-    // When panel opens: always do a fresh API fetch (replaces state, no dupes)
+    // When panel opens: always do a fresh API fetch
     useEffect(() => {
         if (!panelOpen) return;
         refresh();

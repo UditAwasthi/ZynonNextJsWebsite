@@ -567,7 +567,7 @@ const MediaViewer = ({
     media, idx, onPrev, onNext,
 }: { media: PostDetail["media"]; idx: number; onPrev(): void; onNext(): void }) => {
     const [dblLike, setDblLike] = useState(false)
-    const [muted, setMuted] = useState(true)
+    const [muted, setMuted] = useState(false) // unmuted by default
     const [paused, setPaused] = useState(false)
     const [showPlayIcon, setShowPlayIcon] = useState(false)
     const videoRef = useRef<HTMLVideoElement>(null)
@@ -576,7 +576,7 @@ const MediaViewer = ({
     const isVideo = cur?.type === "video"
 
     // Re-mute and resume playback when switching slides
-    useEffect(() => { setMuted(true); setPaused(false) }, [idx])
+    useEffect(() => { setPaused(false) }, [idx]) // preserve mute across slides
 
     // Sync muted state to video element
     useEffect(() => {
@@ -617,7 +617,7 @@ const MediaViewer = ({
                     ref={videoRef}
                     key={idx}
                     src={`${cur.url}#t=0.001`}
-                    autoPlay muted loop playsInline
+                    autoPlay loop playsInline
                     preload="metadata"
                     onClick={handleVideoTap}
                     style={{

@@ -228,8 +228,22 @@ export const Sidebar = () => {
     const moreMenuRef = useRef<HTMLDivElement>(null);
     const { isCollapsed, setIsCollapsed } = useLayout();
 
-    // Pull unreadCount from the hook (panel=false so it only fetches count)
-    const { unreadCount } = useNotifications(false);
+    // ── Single hook instance — owns ALL notification state ────────────────────
+    // Previously useNotifications(false) ran here AND inside NotificationPanel,
+    // creating two separate instances that raced each other on 401 → refresh.
+    // Now one instance drives both the badge count and the panel.
+    const {
+        notifications,
+        unreadCount,
+        loading,
+        loadingMore,
+        hasMore,
+        error,
+        markRead,
+        markAllRead,
+        loadMore,
+    } = useNotifications(notifOpen);
+
     const { hasUnreadMessages } = useUnreadMessages();
 
     // Sidebar pixel width for panel positioning
@@ -429,10 +443,21 @@ export const Sidebar = () => {
 
             <CreateModal open={createOpen} onClose={() => setCreateOpen(false)} />
             <LogoutModal open={logoutOpen} onClose={() => setLogoutOpen(false)} />
+
+            {/* Panel receives data from the single hook instance above — no second hook inside */}
             <NotificationPanel
                 open={notifOpen}
                 onClose={() => setNotifOpen(false)}
                 sidebarWidth={sidebarWidth}
+                notifications={notifications}
+                unreadCount={unreadCount}
+                loading={loading}
+                loadingMore={loadingMore}
+                hasMore={hasMore}
+                error={error}
+                markRead={markRead}
+                markAllRead={markAllRead}
+                loadMore={loadMore}
             />
         </div>
     );
