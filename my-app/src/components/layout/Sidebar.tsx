@@ -244,7 +244,9 @@ export const Sidebar = () => {
         loadMore,
     } = useNotifications(notifOpen);
 
-    const { hasUnreadMessages } = useUnreadMessages();
+    const token = typeof window !== "undefined"
+        ? (localStorage.getItem("accessToken") ?? "") : "";
+    const { hasUnreadMessages, unreadMessageCount } = useUnreadMessages(token);
 
     // Sidebar pixel width for panel positioning
     const sidebarWidth = isCollapsed ? 80 : 256;
@@ -389,8 +391,10 @@ export const Sidebar = () => {
                                     {isActive && <div className="absolute left-0 w-[2.5px] h-6 bg-black dark:bg-white" />}
                                     <div className="relative shrink-0">
                                         <Icon size={18} strokeWidth={isActive ? 2.5 : 1.5} />
-                                        {isMessage && hasUnreadMessages && (
-                                            <span className="absolute -top-1 -right-1 w-[9px] h-[9px] rounded-full bg-red-500 border-2 border-white dark:border-black pointer-events-none" />
+                                        {isMessage && unreadMessageCount > 0 && pathname !== "/messages" && (
+                                            <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-[3px] flex items-center justify-center bg-red-500 text-white text-[9px] font-black rounded-full border-2 border-white dark:border-black leading-none pointer-events-none">
+                                                {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
+                                            </span>
                                         )}
                                     </div>
                                     <div className={`transition-all duration-500 overflow-hidden ${isCollapsed ? "opacity-0 w-0" : "opacity-100 w-40"}`}>
@@ -508,8 +512,10 @@ export const Sidebar = () => {
                         <Link href="/messages"
                             className={`relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${pathname === "/messages" ? "text-black dark:text-white bg-zinc-100 dark:bg-zinc-900" : "text-zinc-500 dark:text-zinc-400"}`}>
                             <MessageSquare size={20} strokeWidth={pathname === "/messages" ? 2.5 : 1.5} />
-                            {hasUnreadMessages && pathname !== "/messages" && (
-                                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 border-2 border-white dark:border-black" />
+                            {unreadMessageCount > 0 && pathname !== "/messages" && (
+                                <span className="absolute top-1 right-1 min-w-[15px] h-[15px] px-[3px] flex items-center justify-center bg-red-500 text-white text-[8px] font-black rounded-full border-2 border-white dark:border-black leading-none">
+                                    {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
+                                </span>
                             )}
                         </Link>
 

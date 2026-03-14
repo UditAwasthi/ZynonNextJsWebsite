@@ -18,6 +18,8 @@ function getNotificationMeta(n: Notification): { text: string; href: string; Ico
             return { text: `liked your comment`, href: `/posts/${n.metadata?.postId ?? n.entityId}`, Icon: Heart, iconBg: "bg-pink-500" };
         case "NEW_MESSAGE":
             return { text: `sent you a message`, href: `/messages/${n.metadata?.threadId ?? n.entityId}`, Icon: Mail, iconBg: "bg-violet-500" };
+        case "FOLLOW":
+            return { text: `started following you`, href: `/profile/${name}`, Icon: UserCheck, iconBg: "bg-green-500" };
         case "FOLLOW_REQUEST":
             return { text: `sent you a follow request`, href: `/profile/${name}`, Icon: UserPlus, iconBg: "bg-amber-500" };
         case "FOLLOW_ACCEPTED":
@@ -54,7 +56,15 @@ interface Props {
 export function NotificationItem({ notification: n, onRead }: Props) {
     const router = useRouter();
     const { text, href, Icon, iconBg } = getNotificationMeta(n);
-    const [followAction, setFollowAction] = useState<FollowAction>("idle");
+    // Seed initial state from the server-side status so that on refresh
+    // the notification correctly shows "Confirmed" / "Deleted" instead of
+    // re-showing the accept/reject buttons for already-actioned requests.
+    const initialAction: FollowAction =
+        n.status === "accepted" ? "accepted" :
+        n.status === "rejected" ? "rejected" :
+        "idle";
+
+    const [followAction, setFollowAction] = useState<FollowAction>(initialAction);
 
     const isFollowRequest = n.type === "FOLLOW_REQUEST";
 

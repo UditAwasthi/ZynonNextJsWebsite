@@ -1,50 +1,31 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
-import { getSocket } from "../lib/socket";
-import type { Notification } from "../components/notifications/types";
+// useUnreadMessages.ts — sidebar adapter
+//
+// Reads the totalUnread from useUnread and clears it when the user
+// navigates to /messages. This hook owns NO socket listeners of its own —
+// all socket work lives in useUnread to avoid double-counting.
 
-export function useUnreadMessages() {
-    const [hasUnread, setHasUnread] = useState(false);
+import { useEffect } from "react";
+import { usePathname } from "next/navigation";
+import { useUnread } from "./useUnread";
+
+export function useUnreadMessages(token: string) {
+    const { totalUnread, setActiveThread, unreadMap, clearUnread } = useUnread(token);
     const pathname = usePathname();
 
-    // Clear when user navigates to messages
+    // When user navigates away from /messages entirely, clear active thread
     useEffect(() => {
-        if (pathname?.startsWith("/messages")) {
-            setHasUnread(false);
+        if (!pathname?.startsWith("/messages")) {
+            setActiveThread(null);
         }
-    }, [pathname]);
+    }, [pathname, setActiveThread]);
 
-    useEffect(() => {
-        const token = typeof window !== "undefined"
-            ? localStorage.getItem("accessToken") : null;
-        if (!token) return;
-
-        let socket: ReturnType<typeof getSocket>;
-        try { socket = getSocket(token); } catch { return; }
-
-        const markUnread = () => {
-            if (!window.location.pathname.startsWith("/messages")) {
-                setHasUnread(true);
-            }
-        };
-
-        // new_message: fired by backend for every message in a thread room
-        socket.on("new_message", markUnread);
-
-        // notification:new with NEW_MESSAGE type — fired even when not in thread room,
-        // making this the reliable trigger when the user hasn't opened the chat yet
-        const notifHandler = (notif: Notification) => {
-            if (notif?.type === "NEW_MESSAGE") markUnread();
-        };
-        socket.on("notification:new", notifHandler);
-
-        return () => {
-            socket.off("new_message", markUnread);
-            socket.off("notification:new", notifHandler);
-        };
-    }, []);
-
-    return { hasUnreadMessages: hasUnread };
+    return {
+        unreadMessageCount: totalUnread,
+        hasUnreadMessages: totalUnread > 0,
+        unreadMap,
+        clearUnread,
+        setActiveThread,
+    };
 }

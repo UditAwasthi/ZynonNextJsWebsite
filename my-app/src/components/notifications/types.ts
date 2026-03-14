@@ -3,6 +3,7 @@ export type NotificationType =
     | "POST_COMMENT"
     | "COMMENT_LIKE"
     | "NEW_MESSAGE"
+    | "FOLLOW"
     | "FOLLOW_REQUEST"
     | "FOLLOW_ACCEPTED"
     | "MENTION"
@@ -23,4 +24,6 @@ export interface Notification {
     metadata: Record<string, string>;
     read: boolean;
     createdAt: string;
+    // Set by backend after accept/reject — tells frontend which state to show
+    status?: "pending" | "accepted" | "rejected";
 }

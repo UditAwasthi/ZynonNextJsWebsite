@@ -319,7 +319,7 @@ const VideoPlayer = memo(function VideoPlayer({ src, radius, isUploading, upload
     return (
         <div
             className="relative overflow-hidden bg-black cursor-pointer"
-            style={{ borderRadius: radius, width: 260 }}
+            style={{ borderRadius: radius, width: "min(260px, 72vw)" }}
             onClick={onExpand}
         >
             <video
@@ -726,7 +726,8 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
     };
 
     return (
-        <div className="flex flex-col h-full w-full bg-white dark:bg-[#0a0a0a] relative overflow-hidden">
+        <div className="flex flex-col h-full w-full bg-white dark:bg-[#0a0a0a] relative overflow-hidden"
+             style={{ maxHeight: "100dvh" }}>
 
             {/* Subtle dot grid */}
             <div
@@ -738,13 +739,14 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
             />
 
             {/* ── Header ── */}
-            <div className="relative z-10 px-4 py-3.5 border-b border-zinc-100 dark:border-zinc-800/60 flex items-center justify-between bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-xl shrink-0">
-                <div className="flex items-center gap-3">
+            <div className="relative z-10 px-2 sm:px-4 border-b border-zinc-100 dark:border-zinc-800/60 flex items-center justify-between bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-xl shrink-0"
+                 style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0.75rem))", paddingBottom: "0.75rem" }}>
+                <div className="flex items-center gap-1 sm:gap-3 min-w-0">
                     <button
                         onClick={onBack}
-                        className="md:hidden w-8 h-8 flex items-center justify-center rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-zinc-500 hover:text-black dark:hover:text-white"
+                        className="md:hidden w-9 h-9 flex items-center justify-center rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white shrink-0"
                     >
-                        <ChevronLeft size={20} />
+                        <ChevronLeft size={22} />
                     </button>
                     {/* Avatar — clickable → profile */}
                     <button
@@ -774,26 +776,26 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                         {/* Username — clickable → profile */}
                         <button
                             onClick={() => router.push(`/profile/${username}`)}
-                            className="font-semibold text-sm text-black dark:text-white leading-none hover:underline focus:outline-none"
+                            className="font-semibold text-[15px] text-black dark:text-white leading-none hover:underline focus:outline-none truncate block max-w-[140px] sm:max-w-[220px] text-left"
                         >
                             {username}
                         </button>
-                        <p className={`text-[10px] font-medium mt-0.5 transition-colors ${isTyping ? "text-emerald-500" : "text-zinc-400"}`}>
+                        <p className={`text-[10px] font-medium mt-0.5 transition-colors ${isTyping ? "text-emerald-500" : "text-zinc-400 dark:text-zinc-500"}`}>
                             {isTyping ? "typing..." : "active now"}
                         </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-0.5">
                     {[Phone, Video, MoreHorizontal].map((Icon, i) => (
-                        <button key={i} className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all">
-                            <Icon size={16} strokeWidth={2} />
+                        <button key={i} className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 dark:text-zinc-500 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all">
+                            <Icon size={18} strokeWidth={2} />
                         </button>
                     ))}
                 </div>
             </div>
 
             {/* ── Messages ── */}
-            <div className="relative z-10 flex-1 overflow-y-auto px-4 py-4 space-y-1">
+            <div className="relative z-10 flex-1 overflow-y-auto chat-no-scrollbar px-3 sm:px-4 py-4 space-y-1">
 
                 {hasMore && !loading && (
                     <div className="flex justify-center pb-2">
@@ -860,7 +862,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                             onMouseEnter={() => setHoveredMsg(msg._id)}
                             onMouseLeave={() => setHoveredMsg(null)}
                         >
-                            <div className="relative flex items-end gap-2 group max-w-[75%] md:max-w-[60%]">
+                            <div className="relative flex items-end gap-1.5 sm:gap-2 group max-w-[80%] sm:max-w-[70%] md:max-w-[60%]">
 
                                 {!isMine && (
                                     <div className="w-6 h-6 shrink-0 mb-0.5">
@@ -878,7 +880,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                 {/* Reaction picker */}
                                 {hoveredMsg === msg._id && !isTemp && (
                                     <div
-                                        className={`absolute ${isMine ? "right-full mr-2" : "left-full ml-2"} bottom-0 z-30 flex items-center gap-0.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-full px-2 py-1.5 shadow-xl`}
+                                        className={`absolute ${isMine ? "right-full mr-2" : "left-full ml-2"} bottom-0 z-30 hidden sm:flex items-center gap-0.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-full px-2 py-1.5 shadow-xl`}
                                         style={{ animation: "popIn 0.15s cubic-bezier(0.34, 1.56, 0.64, 1) forwards" }}
                                     >
                                         {EMOJI_OPTIONS.map((emoji) => (
@@ -935,8 +937,8 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                             <img
                                                 src={msg.mediaUrl}
                                                 alt="media"
-                                                className="max-w-[260px] max-h-[320px] object-cover block transition-transform duration-200 hover:scale-[1.02]"
-                                                style={{ borderRadius: isMine ? myRadius : theirRadius }}
+                                                className="object-cover block transition-transform duration-200 hover:scale-[1.02]"
+                                                style={{ borderRadius: isMine ? myRadius : theirRadius, maxWidth: "min(260px, 72vw)", maxHeight: "320px" }}
                                             />
                                             {isUploading && (
                                                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
@@ -980,7 +982,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                         >
                                             {isUploading
                                                 ? <><Loader2 size={14} className="animate-spin" /><span className="text-[11px]">{msg._uploadProgress}%</span></>
-                                                : <><FileIcon size={16} className="shrink-0" /><span className="text-[13px] truncate max-w-[180px]">Download file</span></>
+                                                : <><FileIcon size={16} className="shrink-0" /><span className="text-[13px] truncate max-w-[150px] sm:max-w-[180px]">Download file</span></>
                                             }
                                         </div>
                                     )}
@@ -1046,7 +1048,8 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
             </div>
 
             {/* ── Input ── */}
-            <div className="relative z-10 border-t border-zinc-100 dark:border-zinc-800/60 bg-white/90 dark:bg-[#0a0a0a]/90 backdrop-blur-xl shrink-0">
+            <div className="relative z-10 border-t border-zinc-100 dark:border-zinc-800/60 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-xl shrink-0"
+                 style={{ paddingBottom: "max(0rem, env(safe-area-inset-bottom, 0rem))" }}>
 
                 {/* Attachment preview */}
                 {attachment && (
@@ -1072,13 +1075,13 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                             </button>
                         </div>
                         <div className="flex-1">
-                            <p className="text-[11px] font-semibold text-black dark:text-white truncate max-w-[200px]">{attachment.file.name}</p>
+                            <p className="text-[11px] font-semibold text-black dark:text-white truncate max-w-[180px] sm:max-w-[240px]">{attachment.file.name}</p>
                             <p className="text-[10px] text-zinc-400 mt-0.5">{(attachment.file.size / 1024).toFixed(0)} KB</p>
                         </div>
                     </div>
                 )}
 
-                <div className="px-4 py-3 flex items-center gap-2">
+                <div className="px-3 sm:px-4 py-3 flex items-center gap-2">
                     <input
                         ref={fileInputRef}
                         type="file"
@@ -1088,7 +1091,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                     />
                     <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all shrink-0"
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all shrink-0 active:scale-90"
                     >
                         <Paperclip size={17} strokeWidth={2} />
                     </button>
@@ -1100,7 +1103,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                             onChange={handleTyping}
                             onKeyDown={handleKeyDown}
                             placeholder={attachment ? "Add a caption..." : `Message ${username}...`}
-                            className="flex-1 bg-transparent outline-none text-sm text-black dark:text-white placeholder:text-zinc-400"
+                            className="flex-1 bg-transparent outline-none text-[16px] sm:text-sm text-black dark:text-white placeholder:text-zinc-400"
                         />
 
                     </div>
@@ -1120,6 +1123,8 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
             </div>
 
             <style>{`
+                .chat-no-scrollbar::-webkit-scrollbar { display: none; }
+                .chat-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
                 @keyframes slideIn {
                     from { opacity: 0; transform: translateY(8px) scale(0.97); }
                     to   { opacity: 1; transform: translateY(0) scale(1); }
