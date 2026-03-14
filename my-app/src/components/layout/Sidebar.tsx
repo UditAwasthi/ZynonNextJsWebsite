@@ -262,13 +262,13 @@ export const Sidebar = () => {
     return (
         <div className="relative z-50">
             <aside
-                className={`fixed left-0 top-0 h-screen border-r border-zinc-300 dark:border-zinc-800 bg-white dark:bg-black transition-all duration-500 ease-in-out ${isCollapsed ? "w-20" : "w-64"}`}
+                className={`hidden md:flex md:fixed left-0 top-0 h-screen border-r border-zinc-300 dark:border-zinc-800 bg-white dark:bg-black transition-all duration-500 ease-in-out flex-col ${isCollapsed ? "w-20" : "w-64"}`}
             >
                 <div className="absolute inset-0 nothing-dot-grid opacity-[0.03] dark:opacity-[0.07] pointer-events-none" />
 
                 <button
                     onClick={() => setIsCollapsed(!isCollapsed)}
-                    className="absolute -right-3 top-12 bg-black dark:bg-white text-white dark:text-black rounded-full p-1.5 border border-zinc-300 dark:border-zinc-700 transition-all duration-300 z-[70] hover:scale-110 shadow-lg"
+                    className="hidden md:block absolute -right-3 top-12 bg-black dark:bg-white text-white dark:text-black rounded-full p-1.5 border border-zinc-300 dark:border-zinc-700 transition-all duration-300 z-[70] hover:scale-110 shadow-lg"
                     style={{ transform: isCollapsed ? "rotate(0deg)" : "rotate(180deg)" }}
                 >
                     <ChevronRight size={12} strokeWidth={3} />
@@ -459,6 +459,105 @@ export const Sidebar = () => {
                 markAllRead={markAllRead}
                 loadMore={loadMore}
             />
+
+            {/* ── Mobile top bar — md:hidden ─────────────────────────────────
+                Logo on left · Messages + Notifications on right
+            ────────────────────────────────────────────────────────────────── */}
+            <header
+                className="md:hidden fixed top-0 left-0 right-0 z-50 bg-white/95 dark:bg-black/95 backdrop-blur-xl border-b border-zinc-200 dark:border-zinc-800"
+                style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+            >
+                <div className="flex items-center justify-between px-4 h-14">
+
+                    {/* Logo */}
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 flex items-center justify-center border border-black dark:border-white rounded-full bg-transparent shrink-0">
+                            <span className="font-nothing text-base text-black dark:text-white">Z</span>
+                        </div>
+                        <div className="flex flex-col leading-none">
+                            <span className="font-nothing text-[17px] tracking-[0.1em] text-black dark:text-white">Zynon</span>
+                            <div className="flex items-center gap-1 mt-0.5">
+                                <div className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
+                                <span className="text-[7px] tracking-[0.2em] text-zinc-400 uppercase font-bold">Active</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right actions */}
+                    <div className="flex items-center gap-1">
+
+                        {/* Messages */}
+                        <Link href="/messages"
+                            className={`relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${pathname === "/messages" ? "text-black dark:text-white bg-zinc-100 dark:bg-zinc-900" : "text-zinc-500 dark:text-zinc-400"}`}>
+                            <MessageSquare size={20} strokeWidth={pathname === "/messages" ? 2.5 : 1.5} />
+                            {hasUnreadMessages && pathname !== "/messages" && (
+                                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 border-2 border-white dark:border-black" />
+                            )}
+                        </Link>
+
+                        {/* Notifications */}
+                        <button
+                            onClick={() => setNotifOpen(p => !p)}
+                            className={`relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${notifOpen ? "text-black dark:text-white bg-zinc-100 dark:bg-zinc-900" : "text-zinc-500 dark:text-zinc-400"}`}>
+                            <Heart size={20} strokeWidth={notifOpen ? 2.5 : 1.5} />
+                            {unreadCount > 0 && (
+                                <span className="absolute top-1 right-1 min-w-[15px] h-[15px] px-[3px] flex items-center justify-center bg-red-500 text-white text-[8px] font-black rounded-full border-2 border-white dark:border-black leading-none">
+                                    {unreadCount > 99 ? "99+" : unreadCount}
+                                </span>
+                            )}
+                        </button>
+
+                    </div>
+                </div>
+            </header>
+
+            {/* ── Mobile bottom tab bar — md:hidden ──────────────────────────
+                Home · Explore · [Create] · Reels · Profile
+            ────────────────────────────────────────────────────────────────── */}
+            <nav
+                className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-black/95 backdrop-blur-xl border-t border-zinc-200 dark:border-zinc-800"
+                style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+            >
+                <div className="flex items-center justify-around px-2 h-16">
+
+                    {/* 1 — Home */}
+                    <Link href="/home"
+                        className={`relative flex items-center justify-center w-12 h-12 transition-colors ${pathname === "/home" ? "text-black dark:text-white" : "text-zinc-400 dark:text-zinc-600"}`}>
+                        <Home size={22} strokeWidth={pathname === "/home" ? 2.5 : 1.5} />
+                        {pathname === "/home" && <div className="absolute bottom-1 w-1 h-1 rounded-full bg-black dark:bg-white" />}
+                    </Link>
+
+                    {/* 2 — Explore */}
+                    <Link href="/explore"
+                        className={`relative flex items-center justify-center w-12 h-12 transition-colors ${pathname === "/explore" ? "text-black dark:text-white" : "text-zinc-400 dark:text-zinc-600"}`}>
+                        <Compass size={22} strokeWidth={pathname === "/explore" ? 2.5 : 1.5} />
+                        {pathname === "/explore" && <div className="absolute bottom-1 w-1 h-1 rounded-full bg-black dark:bg-white" />}
+                    </Link>
+
+                    {/* 3 — Create (centre, elevated pill) */}
+                    <button
+                        onClick={() => setCreateOpen(true)}
+                        className="flex items-center justify-center w-12 h-12 rounded-[16px] bg-black dark:bg-white text-white dark:text-black shadow-[0_6px_20px_-6px_rgba(0,0,0,0.55)] dark:shadow-[0_6px_20px_-6px_rgba(255,255,255,0.2)] active:scale-90 transition-transform"
+                    >
+                        <PlusSquare size={22} strokeWidth={2} />
+                    </button>
+
+                    {/* 4 — Reels */}
+                    <Link href="/reels"
+                        className={`relative flex items-center justify-center w-12 h-12 transition-colors ${pathname === "/reels" ? "text-black dark:text-white" : "text-zinc-400 dark:text-zinc-600"}`}>
+                        <Play size={22} strokeWidth={pathname === "/reels" ? 2.5 : 1.5} />
+                        {pathname === "/reels" && <div className="absolute bottom-1 w-1 h-1 rounded-full bg-black dark:bg-white" />}
+                    </Link>
+
+                    {/* 5 — Profile */}
+                    <Link href="/profile"
+                        className={`relative flex items-center justify-center w-12 h-12 transition-colors ${pathname === "/profile" ? "text-black dark:text-white" : "text-zinc-400 dark:text-zinc-600"}`}>
+                        <User size={22} strokeWidth={pathname === "/profile" ? 2.5 : 1.5} />
+                        {pathname === "/profile" && <div className="absolute bottom-1 w-1 h-1 rounded-full bg-black dark:bg-white" />}
+                    </Link>
+
+                </div>
+            </nav>
         </div>
     );
 };

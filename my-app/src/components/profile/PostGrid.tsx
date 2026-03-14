@@ -118,6 +118,21 @@ const GCSS = `
 .ntg-stat  { animation: ntg-count-in .18s ease both; }
 .ntg-stat-2{ animation: ntg-count-in .18s ease .05s both; }
 .ntg-tile-enter { animation: ntg-tile-in .32s cubic-bezier(.32,.72,0,1) both; }
+
+/* ── Mobile: uniform 2-col grid instead of bento layout ── */
+@media (max-width: 767px) {
+  .ntg-bento-chunk-top {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: auto !important;
+  }
+  .ntg-bento-chunk-top > *:first-child {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    aspect-ratio: 1/1 !important;
+  }
+  .ntg-bento-featured { display: contents; }
+}
 `
 
 function fmtCount(n: number): string {
@@ -270,7 +285,11 @@ const BentoGrid = ({ posts, loadingMore, onTileClick }: {
                 const rowItems = chunk.slice(5)
                 return (
                     <div key={ci} className="flex flex-col gap-2">
-                        <div className="grid gap-2" style={{ gridTemplateColumns: "2fr 1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
+                        {/* Desktop: bento 2fr+1fr+1fr  |  Mobile: 2-col uniform */}
+                        <div
+                            className="ntg-bento-chunk-top grid gap-2"
+                            style={{ gridTemplateColumns: "2fr 1fr 1fr", gridTemplateRows: "1fr 1fr" }}
+                        >
                             <div className="ntg-tile-enter" style={{ gridColumn: "1/2", gridRow: "1/3", aspectRatio: "1/1", animationDelay: `${ci * 0.04}s` }}>
                                 <PostTile post={featured} index={ci * 7} featured onClick={() => onTileClick(featured._id)} />
                             </div>
@@ -286,7 +305,7 @@ const BentoGrid = ({ posts, loadingMore, onTileClick }: {
                             ))}
                         </div>
                         {rowItems.length > 0 && (
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                 {rowItems.map((post, li) => (
                                     <div key={post._id} className="ntg-tile-enter aspect-square" style={{ animationDelay: `${(ci * 7 + 5 + li) * 0.05}s` }}>
                                         <PostTile post={post} index={ci * 7 + 5 + li} onClick={() => onTileClick(post._id)} />
@@ -298,7 +317,7 @@ const BentoGrid = ({ posts, loadingMore, onTileClick }: {
                 )
             })}
             {loadingMore && (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {[0, 1, 2].map(i => (
                         <div key={i} className="ntg-skel-light dark:ntg-skel-dark aspect-square" style={{ animationDelay: `${i * 0.1}s` }} />
                     ))}
@@ -410,7 +429,7 @@ export default function PostGrid({ userId }: PostGridProps) {
             <style>{GCSS}</style>
 
             {/* Main Bento Container — soft squircle preserved */}
-            <div className="relative rounded-[48px] p-8 md:p-10 overflow-hidden bg-white dark:bg-[#0D0D0D] border border-zinc-200 dark:border-zinc-800 transition-all duration-500 shadow-lg dark:shadow-2xl">
+            <div className="relative rounded-[48px] p-5 md:p-10 overflow-hidden bg-white dark:bg-[#0D0D0D] border border-zinc-200 dark:border-zinc-800 transition-all duration-500 shadow-lg dark:shadow-2xl">
 
                 {/* Dot Matrix — light */}
                 <div
@@ -442,7 +461,8 @@ export default function PostGrid({ userId }: PostGridProps) {
                                 <span className="text-[8px] font-bold uppercase tracking-[0.3em] dark:text-white">Retrieving_Data...</span>
                             </div>
                             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(3,1fr)", gridAutoRows: "auto" }}>
-                                <div className="ntg-skel-light dark:ntg-skel-dark rounded-[32px] aspect-square" style={{ gridColumn: "1/3", gridRow: "1/3" }} />
+                                <div className="ntg-skel-light dark:ntg-skel-dark rounded-[32px] aspect-square hidden md:block" style={{ gridColumn: "1/3", gridRow: "1/3" }} />
+                                <div className="ntg-skel-light dark:ntg-skel-dark rounded-[32px] aspect-square md:hidden col-span-2" />
                                 {[0, 1, 2, 3, 4].map(i => (
                                     <div key={i} className="ntg-skel-light dark:ntg-skel-dark rounded-[24px] aspect-square" style={{ animationDelay: `${i * 0.1}s` }} />
                                 ))}

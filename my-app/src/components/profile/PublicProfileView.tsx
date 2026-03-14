@@ -201,8 +201,8 @@ export default function PublicProfileView({ username }: { username: string }) {
                 </div>
 
                 {/* Body */}
-                <div className="relative z-10 p-10 md:p-14">
-                    <div className="flex flex-col md:flex-row items-start gap-10">
+                <div className="relative z-10 p-6 md:p-14">
+                    <div className="flex flex-col md:flex-row items-start gap-6 md:gap-10">
 
                         {/* Avatar Column */}
                         <div className="flex flex-col items-center gap-4 shrink-0 mx-auto md:mx-0">
@@ -246,9 +246,9 @@ export default function PublicProfileView({ username }: { username: string }) {
                         <div className="flex-1 space-y-7 w-full">
 
                             {/* Identity Row */}
-                            <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-                                <div className="space-y-2.5">
-                                    <div className="flex items-center gap-3">
+                            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 md:gap-6">
+                                <div className="space-y-2.5 text-center md:text-left">
+                                    <div className="flex items-center justify-center md:justify-start gap-3">
                                         <span className="text-[8px] font-bold tracking-[0.3em] uppercase text-zinc-400 dark:text-zinc-500">
                                             {profile.isPrivate ? "Private" : "Public"}
                                         </span>
@@ -263,6 +263,7 @@ export default function PublicProfileView({ username }: { username: string }) {
                                 </div>
 
                                 {/* Share button */}
+                                <div className="flex justify-center md:justify-start shrink-0">
                                 <button
                                     onClick={handleShare}
                                     className="shrink-0 group flex items-center gap-3 px-5 py-2.5 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-white/[0.03] hover:bg-black dark:hover:bg-white hover:border-black dark:hover:border-white transition-all duration-300"
@@ -281,6 +282,7 @@ export default function PublicProfileView({ username }: { username: string }) {
                                         </>
                                     )}
                                 </button>
+                                </div>
                             </div>
 
                             {/* Dot Divider */}
@@ -295,7 +297,7 @@ export default function PublicProfileView({ username }: { username: string }) {
                             </div>
 
                             {/* Bio */}
-                            <div className="max-w-2xl space-y-2">
+                            <div className="max-w-2xl space-y-2 text-center md:text-left">
                                 <span className="text-[8px] font-bold tracking-[0.3em] uppercase text-zinc-400 dark:text-zinc-500 block">
                                     Status Report
                                 </span>
@@ -305,8 +307,8 @@ export default function PublicProfileView({ username }: { username: string }) {
                             </div>
 
                             {/* Meta Footer */}
-                            <div className="flex flex-wrap items-center justify-between gap-6 pt-6 border-t border-zinc-100 dark:border-zinc-900">
-                                <div className="flex flex-wrap gap-3">
+                            <div className="flex flex-col md:flex-row md:flex-wrap items-center md:justify-between gap-4 md:gap-6 pt-6 border-t border-zinc-100 dark:border-zinc-900">
+                                <div className="flex flex-wrap justify-center md:justify-start gap-3">
                                     {profile.location && (
                                         <div className="flex items-center gap-2 px-3 py-1.5 border border-zinc-200 dark:border-zinc-800 hover:border-black dark:hover:border-white transition-colors">
                                             <MapPin size={11} className="text-[#FF0000]" />
@@ -382,9 +384,9 @@ function PublicProfileTabs({ userId, isPrivate, username }: { userId: string; is
     return (
         <div className="mt-[2px] space-y-10 pb-24">
             {/* Tab control */}
-            <div className="flex justify-center pt-14">
+            <div className="flex justify-center pt-8 md:pt-14">
                 <div className="flex p-1 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800">
-                    <div className="px-8 py-2 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-3 bg-black dark:bg-white text-white dark:text-black">
+                    <div className="px-6 md:px-8 py-2 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-3 bg-black dark:bg-white text-white dark:text-black">
                         <Grid size={14} strokeWidth={2.5} />
                         Artifacts
                     </div>

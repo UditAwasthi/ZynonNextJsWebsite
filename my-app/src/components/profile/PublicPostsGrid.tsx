@@ -136,6 +136,20 @@ const GCSS = `
 
 /* ── Tile entrance ── */
 .ntg-tile-enter { animation: ntg-tile-in .32s cubic-bezier(.32,.72,0,1) both; }
+
+/* ── Mobile: uniform 2-col grid instead of bento layout ── */
+@media (max-width: 767px) {
+  .ntg-bento-chunk-top {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: auto !important;
+  }
+  .ntg-bento-chunk-top > *:first-child {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    aspect-ratio: 1/1 !important;
+  }
+}
 `
 
 function fmtCount(n: number): string {
@@ -179,7 +193,8 @@ const SectionHeader = ({ count }: { count: number }) => (
 
 const SkeletonGrid = () => (
     <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(3,1fr)", gridAutoRows: "auto" }}>
-        <div className="ntg-skel aspect-square" style={{ gridColumn: "1/3", gridRow: "1/3" }} />
+        <div className="ntg-skel aspect-square hidden md:block" style={{ gridColumn: "1/3", gridRow: "1/3" }} />
+        <div className="ntg-skel aspect-square md:hidden col-span-2" />
         {[0, 1, 2, 3, 4].map(i => (
             <div key={i} className="ntg-skel aspect-square" style={{ animationDelay: `${i * 0.09}s` }} />
         ))}
@@ -292,7 +307,11 @@ const BentoGrid = ({
 
                 return (
                     <div key={ci} className="flex flex-col gap-2">
-                        <div className="grid gap-2" style={{ gridTemplateColumns: "2fr 1fr 1fr", gridTemplateRows: "1fr 1fr" }}>
+                        {/* Desktop: bento 2fr+1fr+1fr  |  Mobile: 2-col uniform */}
+                        <div
+                            className="ntg-bento-chunk-top grid gap-2"
+                            style={{ gridTemplateColumns: "2fr 1fr 1fr", gridTemplateRows: "1fr 1fr" }}
+                        >
                             <div className="ntg-tile-enter" style={{ gridColumn: "1/2", gridRow: "1/3", aspectRatio: "1/1", animationDelay: `${ci * 0.04}s` }}>
                                 <PostTile post={featured} index={ci * 7} featured onClick={() => onTileClick(featured._id)} />
                             </div>
@@ -312,7 +331,7 @@ const BentoGrid = ({
                         </div>
 
                         {rowItems.length > 0 && (
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                 {rowItems.map((post, li) => (
                                     <div key={post._id} className="ntg-tile-enter aspect-square" style={{ animationDelay: `${(ci * 7 + 5 + li) * 0.05}s` }}>
                                         <PostTile post={post} index={ci * 7 + 5 + li} onClick={() => onTileClick(post._id)} />
@@ -325,7 +344,7 @@ const BentoGrid = ({
             })}
 
             {loadingMore && (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {[0, 1, 2].map(i => (
                         <div key={i} className="ntg-skel aspect-square" style={{ animationDelay: `${i * 0.1}s` }} />
                     ))}
@@ -472,7 +491,7 @@ export default function PublicPostsGrid({ userId, isPrivate = false, username }:
             )}
 
             {/* ── Outer container ── */}
-            <div className="relative rounded-[40px] p-6 overflow-hidden bg-white dark:bg-[#0D0D0D] border border-zinc-200 dark:border-zinc-800">
+            <div className="relative rounded-[40px] p-4 md:p-6 overflow-hidden bg-white dark:bg-[#0D0D0D] border border-zinc-200 dark:border-zinc-800">
 
                 {/* Dot Matrix — light */}
                 <div className="absolute inset-0 pointer-events-none rounded-[inherit] dark:hidden"

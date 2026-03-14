@@ -65,7 +65,7 @@ export function PublicProfileStats({
     const showMutuals = mutualFollowersCount > 0
 
     return (
-        <div className="mt-6 w-full max-w-7xl mx-auto font-mono space-y-3">
+        <div className="mt-4 md:mt-6 w-full max-w-7xl mx-auto font-mono space-y-3">
 
             {/* ── Three stat cards ── */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -77,7 +77,7 @@ export function PublicProfileStats({
                         <Tag
                             key={s.label}
                             onClick={s.onClick}
-                            className={`relative overflow-hidden py-6 px-8 rounded-[32px] transition-all duration-500 text-left border
+                            className={`relative overflow-hidden py-5 px-6 md:py-6 md:px-8 rounded-[32px] transition-all duration-500 text-left border
                                 bg-white/70 dark:bg-[#0A0A0A]/90 backdrop-blur-3xl 
                                 border-zinc-200 dark:border-zinc-800 text-black dark:text-white
                                 ${isClickable ? "cursor-pointer hover:border-black dark:hover:border-white active:scale-[0.98]" : ""}

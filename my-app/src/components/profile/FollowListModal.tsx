@@ -89,7 +89,7 @@ export default function FollowListModal({ userId, mode, onClose, onFollowChange 
                 </div>
 
                 {/* List */}
-                <div className="overflow-y-auto max-h-[60vh] divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                <div className="overflow-y-auto max-h-[calc(100dvh-7.5rem-120px)] md:max-h-[60vh] divide-y divide-zinc-100 dark:divide-zinc-800/60">
                     {loading && (
                         <div className="flex items-center justify-center py-16">
                             <Loader2 size={20} className="animate-spin text-zinc-300" />

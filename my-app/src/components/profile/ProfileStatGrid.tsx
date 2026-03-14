@@ -87,7 +87,7 @@ export function ProfileStats() {
 return (
     <>
         {/* Container: Matches ProfileHeader width with consistent spacing */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 w-full max-w-7xl mx-auto font-mono">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mt-4 md:mt-6 w-full max-w-7xl mx-auto font-mono">
             {stats.map((s) => {
                 const isClickable = !!s.onClick;
                 const Tag = isClickable ? "button" : "div";
@@ -97,7 +97,7 @@ return (
                         key={s.label}
                         onClick={s.onClick}
                         /* Unified style for all cards: no more inversion */
-                        className={`relative overflow-hidden py-6 px-8 rounded-[32px] transition-all duration-500 text-left border
+                        className={`relative overflow-hidden py-5 px-6 md:py-6 md:px-8 rounded-[32px] transition-all duration-500 text-left border
                             bg-white/70 dark:bg-[#0A0A0A]/90 backdrop-blur-3xl 
                             border-zinc-200 dark:border-zinc-800 text-black dark:text-white
                             ${isClickable ? "cursor-pointer hover:border-black dark:hover:border-white active:scale-[0.98]" : ""}

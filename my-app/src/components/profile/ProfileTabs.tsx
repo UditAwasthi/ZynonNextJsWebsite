@@ -12,13 +12,13 @@ export const ProfileTabs = ({ userId }: ProfileTabsProps) => {
     const [activeTab, setActiveTab] = useState<"artifacts" | "vault">("artifacts")
 
     return (
-        <div className="mt-12 space-y-12">
+        <div className="mt-8 md:mt-12 space-y-8 md:space-y-12">
             {/* 1. Professional Segmented Control (Pebble Design) */}
             <div className="flex justify-center">
                 <div className="inline-flex p-1.5 bg-white/50 dark:bg-zinc-900/40 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 rounded-[24px] shadow-sm">
                     <button
                         onClick={() => setActiveTab("artifacts")}
-                        className={`px-10 py-3 text-[10px] font-black uppercase tracking-[0.25em] flex items-center gap-3 rounded-[18px] transition-all duration-300
+                        className={`px-6 md:px-10 py-3 text-[10px] font-black uppercase tracking-[0.25em] flex items-center gap-3 rounded-[18px] transition-all duration-300
                             ${activeTab === "artifacts"
                                 ? "bg-black dark:bg-white text-white dark:text-black shadow-lg"
                                 : "text-zinc-500 hover:text-black dark:hover:text-white"
@@ -29,7 +29,7 @@ export const ProfileTabs = ({ userId }: ProfileTabsProps) => {
                     </button>
                     <button
                         onClick={() => setActiveTab("vault")}
-                        className={`px-10 py-3 text-[10px] font-black uppercase tracking-[0.25em] flex items-center gap-3 rounded-[18px] transition-all duration-300
+                        className={`px-6 md:px-10 py-3 text-[10px] font-black uppercase tracking-[0.25em] flex items-center gap-3 rounded-[18px] transition-all duration-300
                             ${activeTab === "vault"
                                 ? "bg-black dark:bg-white text-white dark:text-black shadow-lg"
                                 : "text-zinc-500 hover:text-black dark:hover:text-white"
@@ -50,7 +50,7 @@ export const ProfileTabs = ({ userId }: ProfileTabsProps) => {
                 )}
 
                 {activeTab === "vault" && (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-24 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6 pb-24 animate-in fade-in slide-in-from-bottom-2 duration-500">
                         {/* Initialize Slot Button */}
                         <button className="aspect-square rounded-[40px] border-2 border-dashed border-zinc-200 dark:border-zinc-800 hover:border-[#FF0000] dark:hover:border-[#FF0000] transition-all duration-500 group flex flex-col items-center justify-center gap-5 bg-white/40 dark:bg-[#0A0A0A]/40 backdrop-blur-sm">
                             <div className="p-4 rounded-full border border-zinc-200 dark:border-zinc-800 group-hover:bg-[#FF0000] group-hover:border-[#FF0000] transition-all duration-500">

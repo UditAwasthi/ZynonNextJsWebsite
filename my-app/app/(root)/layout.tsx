@@ -25,10 +25,16 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <main> itself stays context-free so portals stack correctly.
       */}
       <main className="flex-1 relative">
-        {/* This inner div owns the sidebar-collapse margin animation */}
+        {/*
+          On mobile (< md): no left margin — the sidebar is hidden and replaced
+          by the bottom tab bar. Bottom padding prevents content from sitting
+          under the tab bar (64px bar + safe-area-inset-bottom).
+
+          On md+: the existing sidebar margin animation takes over.
+        */}
         <div
-          className={`min-h-screen transition-[margin-left] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${
-            isCollapsed ? "ml-20" : "ml-64"
+          className={`min-h-screen pt-14 md:pt-0 pb-20 md:pb-0 transition-[margin-left] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+            isCollapsed ? "md:ml-20" : "md:ml-64"
           }`}
         >
           {/* Dot grid background — pointer-events-none so it never blocks clicks */}

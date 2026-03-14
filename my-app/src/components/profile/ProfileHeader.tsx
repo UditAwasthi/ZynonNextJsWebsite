@@ -124,11 +124,11 @@ export function ProfileHeader() {
                 </div>
             </div>
 
-            <div className="relative z-10 p-10 md:p-14">
-                <div className="flex flex-col md:flex-row items-start gap-10">
+            <div className="relative z-10 p-6 md:p-14">
+                <div className="flex flex-col md:flex-row items-start gap-6 md:gap-10">
 
                     {/* Profile Picture Column */}
-                    <div className="flex flex-col items-center shrink-0">
+                    <div className="flex flex-col items-center shrink-0 mx-auto md:mx-0">
                         <div className="relative">
                             {/* Dot halo — light */}
                             <div className="absolute -inset-3 rounded-[28px] opacity-[0.12] dark:hidden pointer-events-none"
@@ -159,10 +159,10 @@ export function ProfileHeader() {
                     <div className="flex-1 space-y-7 w-full">
 
                         {/* Identity Row */}
-                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-                            <div className="space-y-2.5">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 md:gap-6">
+                            <div className="space-y-2.5 text-center md:text-left">
                                 {/* Metadata row — font-mono tracking, matches sidebar nav label style */}
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center justify-center md:justify-start gap-3">
                                     <span className="text-[8px] font-bold tracking-[0.3em] uppercase text-zinc-400 dark:text-zinc-500">
                                         {profile.isPrivate ? "Private" : "Public"}
                                     </span>
@@ -177,7 +177,7 @@ export function ProfileHeader() {
                                 </h1>
                             </div>
 
-                            <Link href="/profile/editprofile" className="shrink-0">
+                            <Link href="/profile/editprofile" className="shrink-0 flex justify-center md:justify-start">
                                 <button className="group flex items-center gap-3 px-5 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-white/[0.03] hover:bg-black dark:hover:bg-white hover:border-black dark:hover:border-white transition-all duration-300">
                                     <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-zinc-500 dark:text-zinc-400 group-hover:text-white dark:group-hover:text-black transition-colors">
                                         Edit Profile
@@ -199,7 +199,7 @@ export function ProfileHeader() {
                         </div>
 
                         {/* Bio */}
-                        <div className="max-w-2xl space-y-2">
+                        <div className="max-w-2xl space-y-2 text-center md:text-left">
                             {/* Section label — matches "Session Control" in LogoutModal */}
                             <span className="text-[8px] font-bold tracking-[0.3em] uppercase text-zinc-400 dark:text-zinc-500 block">
                                 Status Report
@@ -211,8 +211,8 @@ export function ProfileHeader() {
                         </div>
 
                         {/* Meta Footer */}
-                        <div className="flex flex-wrap items-center justify-between gap-6 pt-6 border-t border-zinc-100 dark:border-zinc-900">
-                            <div className="flex flex-wrap gap-3">
+                        <div className="flex flex-col md:flex-row md:flex-wrap items-center md:justify-between gap-4 md:gap-6 pt-6 border-t border-zinc-100 dark:border-zinc-900">
+                            <div className="flex flex-wrap justify-center md:justify-start gap-3">
                                 {profile.location && (
                                     <div className="flex items-center gap-2 px-3 py-1.5 border border-zinc-200 dark:border-zinc-800 hover:border-black dark:hover:border-white transition-colors">
                                         <MapPin size={11} className="text-[#FF0000]" />

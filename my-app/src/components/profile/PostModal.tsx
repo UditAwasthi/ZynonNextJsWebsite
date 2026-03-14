@@ -215,6 +215,46 @@ const GCSS = `
 .pm-deleting { animation:pm-delete-out .28s cubic-bezier(.32,.72,0,1) forwards; overflow:hidden }
 .pm-img-in { animation:pm-img-in .22s ease both }
 .pm-playpause-icon { animation:pm-playpause .55s cubic-bezier(.32,.72,0,1) forwards }
+
+/* ── Mobile bottom-sheet (Instagram style) ── */
+/* The .pm-mobile-sheet is only rendered on < md, hidden on desktop */
+.pm-mobile-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  /* Sits between top header (56px / 3.5rem) and bottom tab bar (64px / 4rem) */
+  height: calc(100dvh - 7.5rem);
+  background: var(--pm-bg);
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  position: relative;
+  animation: pm-slide-up .32s cubic-bezier(.32,.72,0,1);
+  box-shadow: 0 -8px 40px rgba(0,0,0,.18);
+  border: 1px solid var(--pm-border-md);
+  border-bottom: none;
+}
+/* Landscape media widget — 16:9 aspect, full width */
+.pm-mobile-media {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  flex-shrink: 0;
+  background: var(--pm-media-bg);
+  overflow: hidden;
+  position: relative;
+}
+/* On desktop this class is hidden — we use the original desktop layout */
+@media (min-width: 768px) {
+  .pm-mobile-sheet { display: none !important; }
+}
+/* On mobile hide the desktop card */
+@media (max-width: 767px) {
+  .pm-desktop-card { display: none !important; }
+}
+/* Always visible comment-actions on mobile (no hover) */
+@media (max-width: 767px) {
+  .pm-comment-actions { opacity: 1 !important; }
+  .pm-reply-actions   { opacity: 1 !important; }
+}
 `
 
 const v = (varName: string) => `var(${varName})`
@@ -1078,10 +1118,233 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
             <style>{GCSS}</style>
             {toast && <Toast message={toast} />}
 
+            {/* ════════════════════════════════════════════════
+                MOBILE BOTTOM-SHEET  (hidden on md+)
+                Instagram layout: author → landscape media →
+                actions+caption → scrollable comments → input
+            ════════════════════════════════════════════════ */}
+            <div
+                className="fixed inset-0 z-[300] flex items-end justify-center md:hidden"
+                style={{ background: "var(--pm-overlay)", backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)", animation: "pm-backdrop .2s ease" }}
+                onClick={e => { if (e.target === e.currentTarget) onClose() }}
+            >
+                <div className="pm-mobile-sheet">
+                    <div className="pm-dot-grid-light" />
+                    <div className="pm-dot-grid-dark" />
+
+                    {/* ── Author header ── */}
+                    <div className="flex items-center justify-between px-4 shrink-0" style={{ paddingTop: 14, paddingBottom: 12, borderBottom: `1px solid var(--pm-border)` }}>
+                        <div className="flex items-center gap-3">
+                            <Avatar src={post.profile.profilePicture} alt={post.author.username} size={36} dot ringRed />
+                            <div>
+                                <p style={{ fontFamily: F.display, fontSize: 14, fontWeight: 700, color: v("--pm-label"), letterSpacing: "-.012em" }}>
+                                    {post.profile.name || post.author.username}
+                                </p>
+                                <p style={{ fontFamily: F.mono, fontSize: 10, color: v("--pm-muted"), marginTop: 1, letterSpacing: ".04em" }}>
+                                    @{post.author.username}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {isOwner && (
+                                !confirmDel ? (
+                                    <button onClick={() => setConfirmDel(true)} className="pm-ibtn" style={{ width: 34, height: 34, color: v("--pm-sub") }}>
+                                        <MoreHorizontal size={17} />
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-2" style={{ animation: "pm-chip-in .18s ease" }}>
+                                        <button onClick={handleDeletePost} className="pm-tap"
+                                            style={{ fontFamily: F.body, fontSize: 12, fontWeight: 700, color: "white", background: v("--pm-red"), borderRadius: 5, padding: "6px 12px" }}>
+                                            Delete
+                                        </button>
+                                        <button onClick={() => setConfirmDel(false)} className="pm-tap"
+                                            style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: v("--pm-label"), background: v("--pm-surface"), border: `1px solid var(--pm-border-md)`, borderRadius: 5, padding: "6px 12px" }}>
+                                            Cancel
+                                        </button>
+                                    </div>
+                                )
+                            )}
+                            <button onClick={onClose} className="pm-tap flex items-center justify-center"
+                                style={{ width: 30, height: 30, borderRadius: 6, background: v("--pm-surface"), border: `1px solid var(--pm-border-md)`, color: v("--pm-label") }}>
+                                <X size={15} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* ── Landscape media widget ── */}
+                    <div className="pm-mobile-media pm-media-dots shrink-0">
+                        <MediaViewer
+                            media={post.media}
+                            idx={mediaIdx}
+                            onPrev={() => setMediaIdx(i => i - 1)}
+                            onNext={() => setMediaIdx(i => i + 1)}
+                        />
+                    </div>
+
+                    {/* ── Actions bar (like / comment / share + save) ── */}
+                    <div className="px-4 pt-3 pb-2 shrink-0 flex items-center justify-between" style={{ borderBottom: `1px solid var(--pm-border)` }}>
+                        <div className="flex items-center gap-5">
+                            <LikeBtn liked={liked} count={likesCount} onToggle={handleLike} size="lg" />
+                            <button onClick={() => setTimeout(() => inputRef.current?.focus(), 50)}
+                                className="pm-tap flex items-center gap-1.5" style={{ color: v("--pm-label") }}>
+                                <MessageCircle size={22} strokeWidth={1.75} />
+                                {post.commentsCount > 0 && (
+                                    <span style={{ fontFamily: F.body, fontSize: 14, fontWeight: 500, color: v("--pm-sub") }}>{post.commentsCount}</span>
+                                )}
+                            </button>
+                            <button className="pm-tap" style={{ color: v("--pm-label") }}
+                                onClick={() => { navigator.clipboard?.writeText(window.location.href); showToast("Link copied") }}>
+                                <Share2 size={21} strokeWidth={1.75} />
+                            </button>
+                        </div>
+                        <button onClick={() => setSaved(s => !s)} className="pm-tap" style={{ color: v("--pm-label") }}>
+                            <Bookmark size={21} strokeWidth={1.75} fill={saved ? v("--pm-label") : "none"} />
+                        </button>
+                    </div>
+
+                    {/* ── Caption + scrollable comments ── */}
+                    <div className="flex-1 overflow-y-auto pm-scroll px-4 py-2" style={{ minHeight: 0 }}>
+                        {/* Caption */}
+                        {post.caption && (
+                            <div className="pb-2 mb-1" style={{ borderBottom: `1px solid var(--pm-border)` }}>
+                                <p style={{ fontFamily: F.body, fontSize: 13, color: v("--pm-label"), lineHeight: 1.55 }}>
+                                    <span style={{ fontWeight: 700 }}>{post.profile.name || post.author.username}{" "}</span>
+                                    {post.caption}
+                                </p>
+                                <p style={{ fontFamily: F.mono, fontSize: 9.5, color: v("--pm-muted"), marginTop: 4, letterSpacing: ".04em" }}>{timeAgo(post.createdAt)}</p>
+                            </div>
+                        )}
+
+                        {/* Comments */}
+                        {loadingCmts && comments.length === 0 && <>{[0, 1, 2].map(i => <CommentSkeleton key={i} />)}</>}
+                        {!loadingCmts && comments.length === 0 && (
+                            <div className="flex flex-col items-center justify-center py-10 gap-2">
+                                <MessageCircle size={22} style={{ color: v("--pm-muted") }} strokeWidth={1.5} />
+                                <p style={{ fontFamily: F.body, fontSize: 13, color: v("--pm-muted") }}>No comments yet.</p>
+                            </div>
+                        )}
+                        {comments.map((c, idx) => (
+                            <div key={c.commentId}
+                                className={`pm-comment-item pm-comment-in py-3 group ${deletingCids.has(c.commentId) ? "pm-deleting" : ""}`}
+                                style={{ borderBottom: idx < comments.length - 1 ? `1px solid var(--pm-border)` : "none", animationDelay: `${idx * .04}s` }}>
+                                <div className="flex gap-2.5">
+                                    <Avatar src={c.profile.profilePicture} alt={c.author.username} size={30} />
+                                    <div className="flex-1 min-w-0">
+                                        {editCid === c.commentId ? (
+                                            <div className="flex items-center gap-2 mb-1.5">
+                                                <input autoFocus value={editCText} onChange={e => setEditCText(e.target.value)}
+                                                    onKeyDown={e => { if (e.key === "Enter") handleEditComment(c.commentId); if (e.key === "Escape") setEditCid(null) }}
+                                                    className="flex-1 pm-inp"
+                                                    style={{ fontFamily: F.body, fontSize: 13, color: v("--pm-label"), borderRadius: 4, background: v("--pm-input-bg"), border: `1.5px solid var(--pm-border-md)`, padding: "6px 10px" }} />
+                                                <button onClick={() => handleEditComment(c.commentId)} style={{ fontFamily: F.body, fontSize: 12, fontWeight: 700, color: v("--pm-red") }}>Save</button>
+                                                <button onClick={() => setEditCid(null)} style={{ color: v("--pm-muted") }}><X size={12} /></button>
+                                            </div>
+                                        ) : (
+                                            <p style={{ fontFamily: F.body, fontSize: 13, color: v("--pm-label"), lineHeight: 1.5, wordBreak: "break-word" }}>
+                                                <span style={{ fontWeight: 700 }}>{c.profile?.name || c.author.username}{" "}</span>{c.text}
+                                            </p>
+                                        )}
+                                        {editCid !== c.commentId && (
+                                            <div className="flex items-center gap-3 mt-1 flex-wrap">
+                                                <span style={{ fontFamily: F.mono, fontSize: 10, color: v("--pm-muted"), letterSpacing: ".03em" }}>{timeAgo(c.createdAt)}</span>
+                                                {c.likesCount > 0 && <span style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: v("--pm-sub") }}>{c.likesCount} {c.likesCount === 1 ? "like" : "likes"}</span>}
+                                                <button onClick={() => openReply({ parentCommentId: c.commentId, username: c.author.username })} className="pm-tap"
+                                                    style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: v("--pm-sub") }}>Reply</button>
+                                            </div>
+                                        )}
+                                        {c.repliesCount > 0 && (
+                                            <div className="mt-2">
+                                                {!expandedReplies.has(c.commentId) ? (
+                                                    <button onClick={() => handleLoadReplies(c.commentId)} className="pm-tap flex items-center gap-2"
+                                                        style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: v("--pm-sub") }}>
+                                                        {loadingReplies[c.commentId] ? <><Spinner size={11} color="var(--pm-muted)" /><span>Loading…</span></> : <><div style={{ width: 18, height: 1.5, background: "var(--pm-border-md)" }} />View {c.repliesCount} {c.repliesCount === 1 ? "reply" : "replies"}</>}
+                                                    </button>
+                                                ) : (
+                                                    <button onClick={() => handleCollapseReplies(c.commentId)} className="pm-tap flex items-center gap-2 mb-1"
+                                                        style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: v("--pm-sub") }}>
+                                                        <div style={{ width: 18, height: 1.5, background: "var(--pm-border-md)" }} />Hide replies
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                        {expandedReplies.has(c.commentId) && replies[c.commentId] && (
+                                            <div className="mt-2 space-y-0">
+                                                {buildTree(replies[c.commentId]).map((node, ni, arr) => (
+                                                    <ReplyNode key={node.replyId} node={node} depth={0} parentCommentId={c.commentId} isLast={ni === arr.length - 1} {...rnCommon} />
+                                                ))}
+                                                {replyCursors[c.commentId] && (
+                                                    <button onClick={() => handleLoadReplies(c.commentId, replyCursors[c.commentId])} className="pm-tap flex items-center gap-2 mt-1 pl-1"
+                                                        style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: v("--pm-sub") }}>
+                                                        {loadingReplies[c.commentId] ? <><Spinner size={11} color="var(--pm-muted)" /><span>Loading…</span></> : <><div style={{ width: 18, height: 1.5, background: "var(--pm-border-md)" }} />Load more replies</>}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="shrink-0 flex flex-col items-center gap-1 pt-0.5">
+                                        <LikeBtn liked={c.isLiked} count={0} onToggle={() => handleCommentLike(c.commentId, c.isLiked)} size="sm" />
+                                        {meId === c.author._id && (
+                                            <div className="pm-comment-actions relative">
+                                                <button onClick={() => setMenuOpenCid(menuOpenCid === c.commentId ? null : c.commentId)} className="pm-ibtn"
+                                                    style={{ width: 24, height: 24, color: v("--pm-muted") }}>
+                                                    <MoreHorizontal size={12} />
+                                                </button>
+                                                {menuOpenCid === c.commentId && (
+                                                    <CtxMenu onEdit={() => { setEditCid(c.commentId); setEditCText(c.text); setMenuOpenCid(null) }}
+                                                        onDelete={() => { handleDeleteComment(c.commentId); setMenuOpenCid(null) }}
+                                                        onClose={() => setMenuOpenCid(null)} />
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {commentCursor && (
+                            <button onClick={handleLoadMoreComments} disabled={loadingCmts} className="pm-tap w-full py-3 flex items-center justify-center gap-2"
+                                style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: v("--pm-sub") }}>
+                                {loadingCmts ? <><Spinner size={13} color="var(--pm-muted)" /><span>Loading…</span></> : "Load more comments"}
+                            </button>
+                        )}
+                    </div>
+
+                    {/* ── Pinned comment input ── */}
+                    <div className="px-4 pt-3 shrink-0" style={{ borderTop: `1px solid var(--pm-border)`, paddingBottom: "max(16px, env(safe-area-inset-bottom, 16px))" }}>
+                        {replyTarget && (
+                            <div className="flex items-center justify-between mb-2 px-3 py-1.5"
+                                style={{ borderRadius: 5, background: v("--pm-reply-chip"), border: `1px solid var(--pm-border)`, animation: "pm-chip-in .18s cubic-bezier(.32,.72,0,1)" }}>
+                                <span style={{ fontFamily: F.body, fontSize: 12, color: v("--pm-sub") }}>
+                                    Replying to <span style={{ fontWeight: 700, color: v("--pm-red") }}>@{replyTarget.username}</span>
+                                </span>
+                                <button onClick={() => { setReplyTarget(null); setInput("") }} className="pm-tap ml-2" style={{ color: v("--pm-muted") }}><X size={12} /></button>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-2.5">
+                            <div className="flex-1 flex items-center gap-1"
+                                style={{ borderRadius: 5, background: v("--pm-input-bg"), border: `1.5px solid var(--pm-border-md)`, padding: "0 6px 0 13px" }}>
+                                <input ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
+                                    onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSubmit()}
+                                    placeholder={replyTarget ? "Add a reply…" : "Add a comment…"}
+                                    className="flex-1 bg-transparent pm-inp"
+                                    style={{ fontFamily: F.body, fontSize: 14, color: v("--pm-label"), border: "none", outline: "none", padding: "10px 0" }} />
+                                <button className="pm-ibtn shrink-0 p-1.5" style={{ color: v("--pm-muted"), borderRadius: 4 }}><Smile size={17} /></button>
+                            </div>
+                            <button onClick={handleSubmit} disabled={!input.trim() || submitting} className="pm-tap flex items-center justify-center shrink-0 disabled:opacity-35"
+                                style={{ width: 38, height: 38, borderRadius: 5, background: input.trim() ? v("--pm-black") : v("--pm-surface"), border: `1.5px solid ${input.trim() ? "var(--pm-black)" : "var(--pm-border-md)"}`, transition: "background .18s, border-color .18s" }}>
+                                {submitting ? <Spinner size={16} color={input.trim() ? "white" : "var(--pm-muted)"} /> : <Send size={14} style={{ color: input.trim() ? "white" : v("--pm-muted"), transform: "translateX(1px)" }} />}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* ════════════════════════════════════════════════
+                DESKTOP CARD  (hidden on < md, unchanged)
+            ════════════════════════════════════════════════ */}
             {/* Backdrop */}
             <div
                 onClick={e => { if (e.target === e.currentTarget) onClose() }}
-                className="fixed inset-0 z-[300] flex items-end md:items-center justify-center p-0 md:p-6"
+                className="pm-desktop-card fixed inset-0 z-[300] hidden md:flex items-center justify-center p-6"
                 style={{
                     background: "var(--pm-overlay)",
                     backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)",
@@ -1090,7 +1353,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
             >
                 {/* ── CARD ── */}
                 <div
-                    className="w-full flex flex-col md:flex-row overflow-hidden relative"
+                    className="w-full flex flex-row overflow-hidden relative"
                     style={{
                         maxWidth: 1080,
                         height: "min(90vh, 700px)",
@@ -1102,9 +1365,8 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                         animation: "pm-slide-up .32s cubic-bezier(.32,.72,0,1)",
                     }}
                 >
-                    {/* Dot Matrix — light (CSS class handles dark:hidden) */}
+                    {/* Dot Matrix */}
                     <div className="pm-dot-grid-light" />
-                    {/* Dot Matrix — dark (CSS class handles hidden dark:block) */}
                     <div className="pm-dot-grid-dark" />
 
                     {/* ── LEFT: MEDIA PANEL ── */}
@@ -1126,16 +1388,10 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                             onPrev={() => setMediaIdx(i => i - 1)}
                             onNext={() => setMediaIdx(i => i + 1)}
                         />
-
                         <button
                             onClick={onClose}
                             className="pm-tap absolute top-3 left-3 z-30 flex items-center justify-center"
-                            style={{
-                                width: 30, height: 30, borderRadius: 5,
-                                background: "rgba(0,0,0,.48)",
-                                backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-                                border: "1px solid rgba(255,255,255,.15)",
-                            }}>
+                            style={{ width: 30, height: 30, borderRadius: 5, background: "rgba(0,0,0,.48)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,.15)" }}>
                             <X size={13} style={{ color: "white" }} />
                         </button>
                     </div>
@@ -1429,7 +1685,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                         </div>
 
                         {/* Comment input */}
-                        <div className="px-4 pb-5 pt-2.5 shrink-0" style={{ borderTop: `1px solid var(--pm-border)` }}>
+                        <div className="px-4 pb-5 pt-2.5 shrink-0" style={{ borderTop: `1px solid var(--pm-border)`, paddingBottom: "max(20px, env(safe-area-inset-bottom, 20px))" }}>
                             {replyTarget && (
                                 <div
                                     className="flex items-center justify-between mb-2 px-3 py-1.5"
