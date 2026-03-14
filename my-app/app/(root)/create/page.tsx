@@ -5,7 +5,7 @@ import toast from "react-hot-toast"
 import { useRouter } from "next/navigation"
 import api from "../../../src/lib/api/api"
 import { Plus, X, Globe, Lock, Loader2, CheckCircle2 } from "lucide-react"
-import { setUploadState } from "../../../src/components/create/UploadOverlay" // adjust path to where you put UploadOverlay.tsx
+import { setUploadState } from "../../../src/components/create/UploadOverlay"
 
 export default function CreatePage() {
     const router = useRouter()
@@ -18,21 +18,88 @@ export default function CreatePage() {
     const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({})
     const [selectedIndex, setSelectedIndex] = useState<number>(0)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const addFiles = useCallback((incoming: FileList) => {
+        const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "webp", "avif", "heic", "heif", "bmp", "tiff", "tif", "svg"])
+        const VIDEO_EXTS = new Set(["mp4", "mov", "m4v", "webm", "mkv", "avi", "wmv", "flv", "3gp", "ts", "mts", "m2ts"])
+
+        const guessType = (f: File): "image" | "video" | null => {
+            if (f.type.startsWith("image/")) return "image"
+            if (f.type.startsWith("video/")) return "video"
+            // f.type is empty on HEIC, MOV, MKV etc — fall back to extension
+            const ext = f.name.split(".").pop()?.toLowerCase() ?? ""
+            if (IMAGE_EXTS.has(ext)) return "image"
+            if (VIDEO_EXTS.has(ext)) return "video"
+            return null
+        }
+
+        const valid = Array.from(incoming).filter(f => {
+            console.log("FILE:", f.name, "| type:", f.type, "| size:", f.size, "| guessType:", guessType(f))
+            if (!guessType(f)) {
+                toast.error(`${f.name.slice(0, 20)} — unsupported file type`)
+                return false
+            }
+            if (f.size > 50 * 1024 * 1024) { toast.error(`${f.name.slice(0, 20)}... exceeds 50 MB`); return false }
+            return true
+        })
+        const newEntries = valid.map(f => ({
+            file: f,
+            preview: URL.createObjectURL(f),
+            type: guessType(f) as "image" | "video",
+            ratio: null as number | null,
+        }))
+        setFiles(prev => [...prev, ...newEntries])
+
+        newEntries.forEach((entry) => {
+            if (entry.type === "image") {
+                const img = new Image()
+                img.onload = () => {
+                    const ratio = img.naturalWidth / img.naturalHeight
+                    console.log("IMG loaded:", entry.file.name, ratio, img.naturalWidth, "x", img.naturalHeight)
+                    setFiles(prev => prev.map(f =>
+                        f.preview === entry.preview ? { ...f, ratio } : f
+                    ))
+                }
+                img.onerror = (e) => {
+                    console.error("IMG failed to load:", entry.file.name, e)
+                    // Still keep the file — just no ratio, will default to 1:1
+                }
+                img.src = entry.preview
+            } else {
+                const vid = document.createElement("video")
+                vid.preload = "metadata"
+                vid.onloadedmetadata = () => {
+                    const ratio = vid.videoWidth / vid.videoHeight
+                    console.log("VID loaded:", entry.file.name, ratio, vid.videoWidth, "x", vid.videoHeight)
+                    setFiles(prev => prev.map(f =>
+                        f.preview === entry.preview ? { ...f, ratio } : f
+                    ))
+                }
+                vid.onerror = (e) => {
+                    console.error("VID failed to load:", entry.file.name, e)
+                }
+                vid.src = entry.preview
+            }
+        })
+    }, [])
+    // Callback ref — fires the instant the <input> enters the DOM,
+    // regardless of portal/mounted timing. Much more reliable than useEffect.
+    const inputRefCallback = useCallback((el: HTMLInputElement | null) => {
+        (fileInputRef as React.MutableRefObject<HTMLInputElement | null>).current = el
+        if (!el) return
+        const handler = () => {
+            if (el.files && el.files.length > 0) {
+                console.log("FILES SELECTED:", el.files.length)
+                addFiles(el.files)
+                el.value = ""
+            }
+        }
+        el.removeEventListener("change", handler) // prevent double-attach
+        el.addEventListener("change", handler)
+    }, [addFiles])
 
     useEffect(() => { setMounted(true) }, [])
 
-    const addFiles = useCallback((incoming: FileList) => {
-        const valid = Array.from(incoming).filter(f => {
-            if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) return false
-            if (f.size > 20 * 1024 * 1024) { toast.error(`${f.name.slice(0, 12)}... exceeds 20MB`); return false }
-            return true
-        })
-        setFiles(prev => [...prev, ...valid.map(f => ({
-            file: f,
-            preview: URL.createObjectURL(f),
-            type: f.type.startsWith("image/") ? "image" : "video"
-        }))])
-    }, [])
+
 
     const removeFile = useCallback((index: number) => {
         setFiles(prev => {
@@ -106,7 +173,6 @@ export default function CreatePage() {
 
             await api.post("content/posts", { caption, visibility, media })
 
-            // Show success on this page for 1.8s before redirecting
             setIsDone(true)
             setLoading(false)
             setUploadState({ status: "success", progress: 100 })
@@ -192,31 +258,35 @@ export default function CreatePage() {
                     <div className="space-y-4">
                         <div
                             onClick={() => !files.length && !loading && fileInputRef.current?.click()}
-                            className="relative aspect-square w-full rounded-[28px] overflow-hidden border border-black/[0.07] dark:border-white/[0.07] bg-white dark:bg-zinc-900 cursor-pointer group"
+                            className="relative w-full rounded-[28px] overflow-hidden border border-black/[0.07] dark:border-white/[0.07] bg-white dark:bg-zinc-900 cursor-pointer group"
+                            style={{
+                                aspectRatio: files[selectedIndex]?.ratio
+                                    ? `${files[selectedIndex].ratio}`
+                                    : "1 / 1",
+                                minHeight: 260,
+                                maxHeight: 680,
+                                maxWidth: "100%",
+                            }}
                         >
                             {files.length > 0 ? (
                                 <>
                                     {files[selectedIndex]?.type === "image" ? (
                                         <img
                                             src={files[selectedIndex].preview}
-                                            className="w-full h-full object-cover grayscale-[30%] group-hover:grayscale-0 transition-all duration-700"
+                                            className="w-full h-full object-contain grayscale-[30%] group-hover:grayscale-0 transition-all duration-700"
                                             alt="Preview"
                                         />
                                     ) : (
-                                        <video src={files[selectedIndex]?.preview} className="w-full h-full object-cover" autoPlay muted loop />
+                                        <video src={files[selectedIndex]?.preview} className="w-full h-full object-contain" autoPlay muted loop />
                                     )}
 
-                                    {/* Uploading overlay */}
                                     {loading && (
                                         <div className="absolute inset-0 bg-black/65 backdrop-blur-[3px] flex flex-col items-center justify-center gap-4">
                                             <span className="text-[64px] font-black tracking-[-0.05em] text-white leading-none tabular-nums">
                                                 {overallProgress}%
                                             </span>
                                             <div className="w-36 h-[2px] bg-white/20 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-white rounded-full transition-all duration-300"
-                                                    style={{ width: `${overallProgress}%` }}
-                                                />
+                                                <div className="h-full bg-white rounded-full transition-all duration-300" style={{ width: `${overallProgress}%` }} />
                                             </div>
                                             <span className="text-[8px] font-bold tracking-[0.5em] uppercase text-white/40">
                                                 Buffering_Uplink
@@ -224,7 +294,6 @@ export default function CreatePage() {
                                         </div>
                                     )}
 
-                                    {/* Success overlay */}
                                     {isDone && (
                                         <div className="absolute inset-0 bg-emerald-500/90 backdrop-blur-[3px] flex flex-col items-center justify-center gap-4"
                                             style={{ animation: "fadeIn 0.3s ease both" }}
@@ -232,12 +301,8 @@ export default function CreatePage() {
                                             <style>{`@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }`}</style>
                                             <CheckCircle2 size={52} className="text-white" strokeWidth={1.5} />
                                             <div className="text-center space-y-1">
-                                                <p className="text-[11px] font-bold tracking-[0.5em] uppercase text-white">
-                                                    Post_Synchronized
-                                                </p>
-                                                <p className="text-[9px] font-bold tracking-[0.3em] uppercase text-white/50">
-                                                    Redirecting...
-                                                </p>
+                                                <p className="text-[11px] font-bold tracking-[0.5em] uppercase text-white">Post_Synchronized</p>
+                                                <p className="text-[9px] font-bold tracking-[0.3em] uppercase text-white/50">Redirecting...</p>
                                             </div>
                                         </div>
                                     )}
@@ -253,7 +318,6 @@ export default function CreatePage() {
                                 </div>
                             )}
 
-                            {/* Corner brackets */}
                             {[
                                 "top-4 left-4 border-t-[1.5px] border-l-[1.5px]",
                                 "top-4 right-4 border-t-[1.5px] border-r-[1.5px]",
@@ -264,7 +328,6 @@ export default function CreatePage() {
                             ))}
                         </div>
 
-                        {/* Filmstrip — hide while uploading */}
                         {files.length > 0 && !loading && !isDone && (
                             <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
                                 {files.map((file, i) => (
@@ -296,12 +359,9 @@ export default function CreatePage() {
                     {/* RIGHT — Controls */}
                     <div className="bg-white dark:bg-[#111111] border border-black/[0.07] dark:border-white/[0.07] rounded-[28px] p-7 flex flex-col gap-7">
 
-                        {/* Caption */}
                         <div>
                             <div className="flex items-center justify-between mb-3">
-                                <label className="text-[9px] font-bold uppercase tracking-[0.4em] text-zinc-400">
-                                    Caption_Buffer
-                                </label>
+                                <label className="text-[9px] font-bold uppercase tracking-[0.4em] text-zinc-400">Caption_Buffer</label>
                                 <span className="text-[9px] text-zinc-400 tabular-nums">{caption.length}/500</span>
                             </div>
                             <textarea
@@ -316,15 +376,12 @@ export default function CreatePage() {
 
                         <div className="h-px bg-black/[0.05] dark:bg-white/[0.05]" />
 
-                        {/* Visibility */}
                         <div>
-                            <label className="text-[9px] font-bold uppercase tracking-[0.4em] text-zinc-400 block mb-3">
-                                Access_Rights
-                            </label>
+                            <label className="text-[9px] font-bold uppercase tracking-[0.4em] text-zinc-400 block mb-3">Access_Rights</label>
                             <div className="grid grid-cols-2 gap-2.5">
                                 {[
-                                    { id: "public",  label: "Public",  desc: "All nodes",  icon: Globe },
-                                    { id: "private", label: "Private", desc: "Owner only", icon: Lock  }
+                                    { id: "public", label: "Public", desc: "All nodes", icon: Globe },
+                                    { id: "private", label: "Private", desc: "Owner only", icon: Lock }
                                 ].map(opt => (
                                     <button
                                         key={opt.id}
@@ -348,7 +405,6 @@ export default function CreatePage() {
 
                         <div className="h-px bg-black/[0.05] dark:bg-white/[0.05]" />
 
-                        {/* File indicator dots */}
                         {files.length > 0 && (
                             <div className="flex items-center gap-2">
                                 <div className="flex gap-1">
@@ -367,7 +423,6 @@ export default function CreatePage() {
                             </div>
                         )}
 
-                        {/* CTA */}
                         <button
                             onClick={handleSubmit}
                             disabled={loading || !files.length || isDone}
@@ -385,18 +440,15 @@ export default function CreatePage() {
                                 "Execute_Broadcast →"
                             )}
                         </button>
-
                     </div>
                 </div>
             </div>
 
             <input
                 type="file"
-                ref={fileInputRef}
-                onChange={e => e.target.files && addFiles(e.target.files)}
+                ref={inputRefCallback}
                 multiple
                 className="hidden"
-                accept="image/*,video/*"
             />
         </div>
     )

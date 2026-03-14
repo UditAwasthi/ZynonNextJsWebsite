@@ -1,15 +1,49 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { Heart, MessageCircle, Home, ImageOff, Play, Wifi, Share2, Bookmark } from "lucide-react";
+import { Heart, MessageCircle, Home, ImageOff, Play, Wifi, Share2, Bookmark, Pause, VolumeX, Volume2 } from "lucide-react";
 import { getHomeFeed, type FeedPost } from "../../../src/lib/api/feedApi";
 import { toggleLike } from "../../../src/lib/api/postApi";
 import { cache, swr } from "../../../src/lib/cache";
 
 const CACHE_KEY = "feed:home";
 const CACHE_TTL = 2 * 60_000;
+
+// ─── Profile picture cache ────────────────────────────────────────────────────
+// Fetches profilePicture from /profile/:username and caches it in memory
+// so every PostCard for the same user reuses one request.
+const picCache = new Map<string, string | null>();
+const picInflight = new Map<string, Promise<string | null>>();
+
+async function fetchProfilePic(username: string): Promise<string | null> {
+    if (picCache.has(username)) return picCache.get(username)!;
+    if (picInflight.has(username)) return picInflight.get(username)!;
+    const base = process.env.NEXT_PUBLIC_API_BASE || "https://zynon.onrender.com/api/";
+    let token: string | null = null;
+    try { token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null; } catch {}
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    const promise = fetch(`${base}profile/${username}`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(json => {
+            const pic: string | null = json?.data?.profile?.profilePicture ?? null;
+            picCache.set(username, pic);
+            picInflight.delete(username);
+            return pic;
+        })
+        .catch(() => { picCache.set(username, null); picInflight.delete(username); return null; });
+    picInflight.set(username, promise);
+    return promise;
+}
+
+function useProfilePic(username: string): string | null {
+    const [pic, setPic] = useState<string | null>(() => picCache.get(username) ?? null);
+    useEffect(() => {
+        if (picCache.has(username)) { setPic(picCache.get(username) ?? null); return; }
+        fetchProfilePic(username).then(setPic);
+    }, [username]);
+    return pic;
+}
 
 // ─── Global CSS ───────────────────────────────────────────────────────────────
 const GCSS = `
@@ -19,6 +53,7 @@ const GCSS = `
 @keyframes hf-in      { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
 @keyframes hf-shimmer { from{background-position:200% 0} to{background-position:-200% 0} }
 @keyframes hf-like    { 0%{transform:scale(1)} 30%{transform:scale(1.38)} 60%{transform:scale(.9)} 100%{transform:scale(1)} }
+@keyframes hf-playpause { 0%{transform:scale(.7);opacity:0} 40%{transform:scale(1.15);opacity:1} 70%{transform:scale(.92)} 100%{transform:scale(1);opacity:0} }
 
 .hf-dot-grid {
   background-image: radial-gradient(circle, currentColor 0.7px, transparent 0.7px);
@@ -48,6 +83,17 @@ const GCSS = `
 .hf-action { transition: color .15s, transform .15s cubic-bezier(.34,1.56,.64,1); }
 .hf-action:hover { transform: scale(1.12); }
 .hf-action:active { transform: scale(.88); }
+.hf-playpause-icon { animation: hf-playpause .55s cubic-bezier(.32,.72,0,1) forwards; }
+/* Video progress bar */
+.hf-progress-track {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 3px; background: rgba(255,255,255,0.15); z-index: 10;
+}
+.hf-progress-fill {
+  height: 100%; background: #FF0000;
+  box-shadow: 0 0 6px rgba(255,0,0,0.7);
+  transition: none;
+}
 `;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -74,6 +120,152 @@ function LiveDot() {
     );
 }
 
+// ─── Custom Video Player ───────────────────────────────────────────────────────
+function VideoPlayer({ src, borderRadius = 12 }: { src: string; borderRadius?: number }) {
+    const videoRef   = useRef<HTMLVideoElement>(null);
+    const timerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [playing,     setPlaying]     = useState(false);
+    const [muted,       setMuted]       = useState(true);
+    const [progress,    setProgress]    = useState(0);
+    const [showOverlay, setShowOverlay] = useState(false);
+    const [showIcon,    setShowIcon]    = useState(false);
+
+    // Sync muted to video element
+    useEffect(() => {
+        if (videoRef.current) videoRef.current.muted = muted;
+    }, [muted]);
+
+    // Progress tracking
+    useEffect(() => {
+        const vid = videoRef.current;
+        if (!vid) return;
+        const onTime = () => {
+            if (vid.duration) setProgress((vid.currentTime / vid.duration) * 100);
+        };
+        vid.addEventListener("timeupdate", onTime);
+        return () => vid.removeEventListener("timeupdate", onTime);
+    }, []);
+
+    const togglePlay = () => {
+        const vid = videoRef.current;
+        if (!vid) return;
+        if (playing) {
+            vid.pause();
+            setPlaying(false);
+        } else {
+            vid.play().then(() => setPlaying(true)).catch(() => {});
+        }
+        // Show play/pause flash icon
+        setShowIcon(true);
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setShowIcon(false), 600);
+    };
+
+    return (
+        <div
+            className="relative overflow-hidden bg-zinc-950 mx-4 cursor-pointer select-none"
+            style={{ borderRadius, aspectRatio: "4/5", maxHeight: 560 }}
+            onClick={togglePlay}
+            onMouseEnter={() => setShowOverlay(true)}
+            onMouseLeave={() => setShowOverlay(false)}
+        >
+            <video
+                ref={videoRef}
+                src={src}
+                className="w-full h-full object-cover"
+                loop
+                muted={muted}
+                playsInline
+                preload="metadata"
+            />
+
+            {/* Scan line — always visible, matches card style */}
+            <div className="hf-scan" />
+
+            {/* Bottom gradient */}
+            <div className="absolute bottom-0 left-0 right-0 h-14 pointer-events-none z-[3]"
+                style={{ background: "linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 100%)" }} />
+
+            {/* Play/Pause flash icon */}
+            {showIcon && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[8]">
+                    <div
+                        className="hf-playpause-icon flex items-center justify-center border border-white/15"
+                        style={{
+                            width: 52, height: 52, borderRadius: 10,
+                            background: "rgba(0,0,0,0.55)",
+                            backdropFilter: "blur(12px)",
+                        }}
+                    >
+                        {playing
+                            ? <Pause size={20} fill="white" className="text-white" />
+                            : <Play  size={20} fill="white" className="text-white ml-0.5" />
+                        }
+                    </div>
+                </div>
+            )}
+
+            {/* Initial play button — shown when paused and no icon flash */}
+            {!playing && !showIcon && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[7]">
+                    <div
+                        className="flex items-center justify-center border border-white/15"
+                        style={{
+                            width: 52, height: 52, borderRadius: 10,
+                            background: "rgba(0,0,0,0.55)",
+                            backdropFilter: "blur(12px)",
+                        }}
+                    >
+                        <Play size={20} fill="white" className="text-white ml-0.5" />
+                    </div>
+                </div>
+            )}
+
+            {/* Controls bar — mute + reel label — shown on hover or always visible */}
+            <div
+                className="absolute top-3 left-3 right-3 flex items-center justify-between z-[9] pointer-events-none"
+                style={{ opacity: showOverlay || !playing ? 1 : 0, transition: "opacity .2s" }}
+            >
+                {/* Reel chip — top left */}
+                <div
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 pointer-events-auto"
+                    style={{
+                        background: "rgba(0,0,0,0.55)",
+                        backdropFilter: "blur(8px)",
+                        borderRadius: 7,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                    }}
+                >
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-600" style={{ animation: "hf-pulse 1.8s ease infinite" }} />
+                    <span className="font-mono text-[8px] font-black text-white tracking-[0.2em] uppercase">Reel</span>
+                </div>
+
+                {/* Mute button — top right */}
+                <button
+                    className="pointer-events-auto flex items-center justify-center"
+                    style={{
+                        width: 30, height: 30, borderRadius: 7,
+                        background: "rgba(0,0,0,0.48)",
+                        backdropFilter: "blur(8px)",
+                        border: "1px solid rgba(255,255,255,0.12)",
+                    }}
+                    onClick={e => { e.stopPropagation(); setMuted(m => !m); }}
+                >
+                    {muted
+                        ? <VolumeX size={13} className="text-white/60" />
+                        : <Volume2 size={13} className="text-white" />
+                    }
+                </button>
+            </div>
+
+            {/* Progress bar — always at bottom */}
+            <div className="hf-progress-track pointer-events-none">
+                <div className="hf-progress-fill" style={{ width: `${progress}%` }} />
+            </div>
+        </div>
+    );
+}
+
 // ─── Post Card ────────────────────────────────────────────────────────────────
 function PostCard({ post, index }: { post: FeedPost; index: number }) {
     const [liked,     setLiked]     = useState(false);
@@ -83,6 +275,7 @@ function PostCard({ post, index }: { post: FeedPost; index: number }) {
     const [likeAnim,  setLikeAnim]  = useState(false);
     const media   = post.media?.[0];
     const isVideo = media?.type === "video";
+    const profilePic = useProfilePic(post.author.username);
 
     const handleLike = async () => {
         if (liking) return;
@@ -114,10 +307,10 @@ function PostCard({ post, index }: { post: FeedPost; index: number }) {
             <div className="relative z-10 flex items-center gap-3 px-5 pt-5 pb-4">
                 <Link href={`/profile/${post.author.username}`} className="flex items-center gap-3 min-w-0 flex-1 group">
                     <div className="relative shrink-0">
-                        <div className="w-10 h-10 overflow-hidden bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800" style={{ borderRadius: 10 }}>
-                            {post.author.profilePicture
-                                ? <Image src={post.author.profilePicture} alt={post.author.username} width={40} height={40} className="w-full h-full object-cover" unoptimized />
-                                : <span className="w-full h-full flex items-center justify-center font-mono text-[11px] font-black text-zinc-400 uppercase">{post.author.username.slice(0, 2)}</span>
+                        <div className="relative w-10 h-10 overflow-hidden bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800" style={{ borderRadius: 10 }}>
+                            {profilePic
+                                ? <img src={profilePic} alt={post.author.username} className="absolute inset-0 w-full h-full object-cover" />
+                                : <span className="absolute inset-0 flex items-center justify-center font-mono text-[11px] font-black text-zinc-400 uppercase">{post.author.username.slice(0, 2)}</span>
                             }
                         </div>
                         <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-600 border-2 border-white dark:border-[#0D0D0D]"
@@ -141,23 +334,15 @@ function PostCard({ post, index }: { post: FeedPost; index: number }) {
 
             {/* Media */}
             {media?.url ? (
-                <div className="relative overflow-hidden bg-zinc-950 mx-4" style={{ borderRadius: 12 }}>
-                    <div style={{ aspectRatio: "4/5", maxHeight: 560 }} className="relative overflow-hidden">
-                        {isVideo ? (
-                            <video src={media.url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
-                        ) : (
-                            <Image src={media.url} alt={post.caption || "Post"} fill className="hf-media object-cover" unoptimized />
-                        )}
-                        {isVideo && (
-                            <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 px-2.5 py-1.5 bg-black/55 backdrop-blur-md border border-white/10" style={{ borderRadius: 7 }}>
-                                <Play size={8} fill="white" className="text-white" />
-                                <span className="font-mono text-[8px] font-black text-white tracking-[0.2em] uppercase">Reel</span>
-                            </div>
-                        )}
-                        <div className="absolute bottom-0 left-0 right-0 h-14 pointer-events-none"
-                            style={{ background: "linear-gradient(to top, rgba(0,0,0,0.5) 0%, transparent 100%)" }} />
+                isVideo ? (
+                    <VideoPlayer src={media.url} borderRadius={12} />
+                ) : (
+                    <div className="relative overflow-hidden bg-zinc-950 mx-4" style={{ borderRadius: 12 }}>
+                        <div style={{ aspectRatio: "4/5", maxHeight: 560 }} className="relative overflow-hidden">
+                            <img src={media.url} alt={post.caption || "Post"} className="hf-media object-cover w-full h-full" />
+                        </div>
                     </div>
-                </div>
+                )
             ) : (
                 <div className="mx-4 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center"
                     style={{ borderRadius: 12, aspectRatio: "4/5", maxHeight: 280 }}>
@@ -181,10 +366,9 @@ function PostCard({ post, index }: { post: FeedPost; index: number }) {
                 </div>
             )}
 
-            {/* Actions — single row, no duplicates */}
+            {/* Actions */}
             <div className="relative z-10 flex items-center justify-between px-5 py-4">
                 <div className="flex items-center gap-5">
-                    {/* Like — one button only */}
                     <button onClick={handleLike} disabled={liking}
                         className={`hf-action flex items-center gap-2 ${liked ? "text-red-500" : "text-zinc-500 dark:text-zinc-400 hover:text-red-500"}`}>
                         <Heart
@@ -193,15 +377,12 @@ function PostCard({ post, index }: { post: FeedPost; index: number }) {
                         />
                         <span className="font-mono text-[11px] font-black tabular-nums">{fmtCount(likeCount)}</span>
                     </button>
-
-                    {/* Comment — one button only */}
                     <Link href={`/posts/${post._id}`}
                         className="hf-action flex items-center gap-2 text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white">
                         <MessageCircle size={18} strokeWidth={1.75} />
                         <span className="font-mono text-[11px] font-black tabular-nums">{fmtCount(post.commentsCount)}</span>
                     </Link>
                 </div>
-
                 <div className="flex items-center gap-3">
                     <button
                         onClick={() => { try { navigator.clipboard?.writeText(`${window.location.origin}/posts/${post._id}`); } catch {} }}
@@ -447,11 +628,10 @@ export default function HomeFeedPage() {
                     </div>
                 </div>
 
-                {/* ── Body: centered feed + sidebar ── */}
+                {/* ── Body ── */}
                 <div className="max-w-5xl mx-auto px-6 py-8">
                     <div className="flex gap-8 justify-center">
 
-                        {/* Feed — fixed width, truly centered on small screens */}
                         <div className="w-full max-w-[520px] space-y-5 shrink-0">
 
                             {loading && (

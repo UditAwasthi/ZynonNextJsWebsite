@@ -483,17 +483,8 @@ export const Sidebar = () => {
                         </div>
                     </div>
 
-                    {/* Right actions */}
+                    {/* Right actions — Notifications · Search · Messages */}
                     <div className="flex items-center gap-1">
-
-                        {/* Messages */}
-                        <Link href="/messages"
-                            className={`relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${pathname === "/messages" ? "text-black dark:text-white bg-zinc-100 dark:bg-zinc-900" : "text-zinc-500 dark:text-zinc-400"}`}>
-                            <MessageSquare size={20} strokeWidth={pathname === "/messages" ? 2.5 : 1.5} />
-                            {hasUnreadMessages && pathname !== "/messages" && (
-                                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 border-2 border-white dark:border-black" />
-                            )}
-                        </Link>
 
                         {/* Notifications */}
                         <button
@@ -506,6 +497,21 @@ export const Sidebar = () => {
                                 </span>
                             )}
                         </button>
+
+                        {/* Search */}
+                        <Link href="/search"
+                            className={`relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${pathname === "/explore" ? "text-black dark:text-white bg-zinc-100 dark:bg-zinc-900" : "text-zinc-500 dark:text-zinc-400"}`}>
+                            <Search size={20} strokeWidth={pathname === "/explore" ? 2.5 : 1.5} />
+                        </Link>
+
+                        {/* Messages */}
+                        <Link href="/messages"
+                            className={`relative flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${pathname === "/messages" ? "text-black dark:text-white bg-zinc-100 dark:bg-zinc-900" : "text-zinc-500 dark:text-zinc-400"}`}>
+                            <MessageSquare size={20} strokeWidth={pathname === "/messages" ? 2.5 : 1.5} />
+                            {hasUnreadMessages && pathname !== "/messages" && (
+                                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 border-2 border-white dark:border-black" />
+                            )}
+                        </Link>
 
                     </div>
                 </div>

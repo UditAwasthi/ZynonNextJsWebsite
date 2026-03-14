@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { Heart, MessageCircle, Play, Pause, VolumeX, Volume2, Film, Share2, Check } from "lucide-react";
 import { getReelsFeed, type FeedPost } from "../../../src/lib/api/feedApi";
@@ -10,6 +9,39 @@ import { cache } from "../../../src/lib/cache";
 
 const CACHE_TTL = 3 * 60_000;
 const reelsCacheKey = (cursor?: string) => `feed:reels:${cursor ?? "first"}`;
+
+// ─── Profile picture cache ────────────────────────────────────────────────────
+const picCache = new Map<string, string | null>();
+const picInflight = new Map<string, Promise<string | null>>();
+
+async function fetchProfilePic(username: string): Promise<string | null> {
+    if (picCache.has(username)) return picCache.get(username)!;
+    if (picInflight.has(username)) return picInflight.get(username)!;
+    const base = process.env.NEXT_PUBLIC_API_BASE || "https://zynon.onrender.com/api/";
+    let token: string | null = null;
+    try { token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null; } catch {}
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+    const promise = fetch(`${base}profile/${username}`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(json => {
+            const pic: string | null = json?.data?.profile?.profilePicture ?? null;
+            picCache.set(username, pic);
+            picInflight.delete(username);
+            return pic;
+        })
+        .catch(() => { picCache.set(username, null); picInflight.delete(username); return null; });
+    picInflight.set(username, promise);
+    return promise;
+}
+
+function useProfilePic(username: string): string | null {
+    const [pic, setPic] = useState<string | null>(() => picCache.get(username) ?? null);
+    useEffect(() => {
+        if (picCache.has(username)) { setPic(picCache.get(username) ?? null); return; }
+        fetchProfilePic(username).then(setPic);
+    }, [username]);
+    return pic;
+}
 
 // ─── Global CSS ───────────────────────────────────────────────────────────────
 const GCSS = `
@@ -21,8 +53,11 @@ const GCSS = `
 @keyframes rl-shimmer{ from{background-position:200% 0} to{background-position:-200% 0} }
 
 .rl-dot-grid {
-  background-image: radial-gradient(circle, rgba(255,255,255,0.055) 0.7px, transparent 0.7px);
+  background-image: radial-gradient(circle, rgba(0,0,0,0.07) 0.7px, transparent 0.7px);
   background-size: 14px 14px;
+}
+.dark .rl-dot-grid {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.055) 0.7px, transparent 0.7px);
 }
 .rl-scan-line {
   position: absolute; left: 0; right: 0; height: 1px;
@@ -54,9 +89,14 @@ function LiveDot({ size = 6 }: { size?: number }) {
 function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean; index: number }) {
     const videoRef        = useRef<HTMLVideoElement>(null);  // mobile
     const videoRefDesktop = useRef<HTMLVideoElement>(null);  // desktop
+    const profilePic      = useProfilePic(reel.author.username);
 
-    // Helper — returns whichever video element is currently visible
-    const getVid = () => videoRef.current ?? videoRefDesktop.current;    const [playing,   setPlaying]   = useState(false);
+    // Helper — returns the video element that is currently visible
+    const getVid = () => {
+        const isDesktop = typeof window !== "undefined" && window.innerWidth >= 768;
+        return isDesktop ? videoRefDesktop.current : videoRef.current;
+    };
+    const [playing,   setPlaying]   = useState(false);
     const [muted,     setMuted]     = useState(false);
     const [liked,     setLiked]     = useState(false);
     const [likeCount, setLikeCount] = useState(reel.likesCount);
@@ -78,8 +118,16 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
         const vid = videoRef.current;
         const vidD = videoRefDesktop.current;
         if (isActive) {
-            vid?.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
-            vidD?.play().catch(() => {});
+            const isDesktop = window.innerWidth >= 768;
+            if (isDesktop) {
+                // Desktop: play card video only, ensure mobile video is stopped
+                if (vid) { vid.pause(); vid.currentTime = 0; }
+                vidD?.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+            } else {
+                // Mobile: play fullscreen video only, ensure desktop video is stopped
+                if (vidD) { vidD.pause(); vidD.currentTime = 0; }
+                vid?.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+            }
         } else {
             if (vid)  { vid.pause();  vid.currentTime  = 0; }
             if (vidD) { vidD.pause(); vidD.currentTime = 0; }
@@ -128,7 +176,7 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
     };
 
     return (
-        <div className="w-full h-[calc(100dvh-7.5rem)] md:h-screen bg-black flex items-center justify-center relative overflow-hidden">
+        <div className="w-full h-[calc(100dvh-7.5rem)] md:h-screen bg-zinc-100 dark:bg-black flex items-center justify-center relative overflow-hidden">
             <div className="rl-dot-grid absolute inset-0 pointer-events-none z-0" />
             <div className="rl-scan-line" />
 
@@ -150,8 +198,8 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
                         loop muted={muted} playsInline preload="metadata"
                     />
                 ) : (
-                    <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
-                        <Film size={36} className="text-zinc-700" strokeWidth={1.5} />
+                    <div className="w-full h-full bg-zinc-200 dark:bg-zinc-900 flex items-center justify-center">
+                        <Film size={36} className="text-zinc-500 dark:text-zinc-700" strokeWidth={1.5} />
                     </div>
                 )}
 
@@ -171,7 +219,7 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
 
                 {/* Progress bar */}
                 <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none" style={{ height: 2 }}>
-                    <div className="h-full bg-zinc-800" />
+                    <div className="h-full bg-zinc-300 dark:bg-zinc-800" />
                     <div className="absolute top-0 left-0 h-full bg-red-600" style={{ width: `${progress}%`, boxShadow: "0 0 6px rgba(255,0,0,0.7)", transition: "none" }} />
                 </div>
             </div>
@@ -188,10 +236,10 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
                         </div>
                     </div>
                     <Link href={`/profile/${reel.author.username}`} className="inline-flex items-center gap-2 mb-2 pointer-events-auto group" onClick={e => e.stopPropagation()}>
-                        <div className="w-8 h-8 overflow-hidden border border-white/20 bg-zinc-900 shrink-0 flex items-center justify-center" style={{ borderRadius: 8 }}>
-                            {reel.author.profilePicture
-                                ? <Image src={reel.author.profilePicture} alt={reel.author.username} width={32} height={32} className="w-full h-full object-cover" unoptimized />
-                                : <span className="font-mono text-[9px] font-black text-white uppercase">{reel.author.username.slice(0, 2)}</span>
+                        <div className="relative w-8 h-8 overflow-hidden border border-black/20 dark:border-white/20 bg-zinc-200 dark:bg-zinc-900 shrink-0" style={{ borderRadius: 8 }}>
+                            {profilePic
+                                ? <img src={profilePic} alt={reel.author.username} className="absolute inset-0 w-full h-full object-cover" />
+                                : <span className="absolute inset-0 flex items-center justify-center font-mono text-[9px] font-black text-white uppercase">{reel.author.username.slice(0, 2)}</span>
                             }
                         </div>
                         <div>
@@ -230,7 +278,7 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
 
                 {/* Desktop video card */}
                 <div
-                    className="relative bg-zinc-950 overflow-hidden flex-shrink-0 border border-zinc-800"
+                    className="relative bg-zinc-200 dark:bg-zinc-950 overflow-hidden flex-shrink-0 border border-zinc-300 dark:border-zinc-800"
                     style={{ aspectRatio: "9/16", height: "100%", borderRadius: 16, maxWidth: "calc(min(calc(100dvh - 32px), 800px) * 9 / 16)" }}
                     onClick={togglePlay}
                 >
@@ -247,8 +295,8 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
                             loop muted={muted} playsInline preload="metadata"
                         />
                     ) : (
-                        <div className="w-full h-full bg-zinc-900 flex items-center justify-center cursor-pointer">
-                            <Film size={36} className="text-zinc-700" strokeWidth={1.5} />
+                        <div className="w-full h-full bg-zinc-200 dark:bg-zinc-900 flex items-center justify-center cursor-pointer">
+                            <Film size={36} className="text-zinc-500 dark:text-zinc-700" strokeWidth={1.5} />
                         </div>
                     )}
 
@@ -268,10 +316,10 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
                             </div>
                         </div>
                         <Link href={`/profile/${reel.author.username}`} className="inline-flex items-center gap-2 mb-2 pointer-events-auto group" onClick={e => e.stopPropagation()}>
-                            <div className="w-8 h-8 overflow-hidden border border-white/20 bg-zinc-900 shrink-0 flex items-center justify-center" style={{ borderRadius: 8 }}>
-                                {reel.author.profilePicture
-                                    ? <Image src={reel.author.profilePicture} alt={reel.author.username} width={32} height={32} className="w-full h-full object-cover" unoptimized />
-                                    : <span className="font-mono text-[9px] font-black text-white uppercase">{reel.author.username.slice(0, 2)}</span>
+                            <div className="relative w-8 h-8 overflow-hidden border border-black/20 dark:border-white/20 bg-zinc-200 dark:bg-zinc-900 shrink-0" style={{ borderRadius: 8 }}>
+                                {profilePic
+                                    ? <img src={profilePic} alt={reel.author.username} className="absolute inset-0 w-full h-full object-cover" />
+                                    : <span className="absolute inset-0 flex items-center justify-center font-mono text-[9px] font-black text-white uppercase">{reel.author.username.slice(0, 2)}</span>
                                 }
                             </div>
                             <div>
@@ -283,7 +331,7 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
                     </div>
 
                     <div className="absolute bottom-0 left-0 right-0 z-30 pointer-events-none" style={{ height: 2 }}>
-                        <div className="h-full bg-zinc-800" />
+                        <div className="h-full bg-zinc-300 dark:bg-zinc-800" />
                         <div className="absolute top-0 left-0 h-full bg-red-600" style={{ width: `${progress}%`, boxShadow: "0 0 6px rgba(255,0,0,0.7)", transition: "none" }} />
                     </div>
                 </div>
@@ -291,28 +339,32 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
                 {/* Desktop action bar */}
                 <div className="flex flex-col items-center gap-4 pb-6 shrink-0">
                     <button onClick={handleLike} disabled={liking} className="flex flex-col items-center gap-1.5 group active:scale-90 transition-transform">
-                        <div className="w-11 h-11 flex items-center justify-center border transition-all duration-200" style={{ borderRadius: 12, borderColor: liked ? "rgba(239,68,68,0.4)" : "rgba(63,63,70,1)", background: liked ? "rgba(239,68,68,0.12)" : "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}>
-                            <Heart size={20} strokeWidth={liked ? 0 : 1.5} fill={liked ? "#ef4444" : "none"} className={`${liked ? "text-red-500 drop-shadow-[0_0_8px_rgba(255,0,0,0.6)]" : "text-white"} ${likeAnim ? "rl-heart-pop" : ""}`} />
+                        <div className="w-11 h-11 flex items-center justify-center border transition-all duration-200"
+                            style={{ borderRadius: 12, borderColor: liked ? "rgba(239,68,68,0.4)" : "rgba(120,120,128,0.4)", background: liked ? "rgba(239,68,68,0.12)" : "rgba(128,128,128,0.15)", backdropFilter: "blur(8px)" }}>
+                            <Heart size={20} strokeWidth={liked ? 0 : 1.5} fill={liked ? "#ef4444" : "none"} className={`${liked ? "text-red-500" : "text-zinc-700 dark:text-white"} ${likeAnim ? "rl-heart-pop" : ""}`} />
                         </div>
-                        <span className="font-mono text-[9px] font-black text-white/50 tabular-nums">{fmtCount(likeCount)}</span>
+                        <span className="font-mono text-[9px] font-black text-zinc-500 dark:text-white/50 tabular-nums">{fmtCount(likeCount)}</span>
                     </button>
                     <Link href={`/posts/${reel._id}`} className="flex flex-col items-center gap-1.5 group active:scale-90 transition-transform" onClick={e => e.stopPropagation()}>
-                        <div className="w-11 h-11 flex items-center justify-center border border-zinc-800 group-hover:border-zinc-600 transition-colors" style={{ borderRadius: 12, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}>
-                            <MessageCircle size={20} strokeWidth={1.5} className="text-white" />
+                        <div className="w-11 h-11 flex items-center justify-center border border-zinc-300 dark:border-zinc-800 group-hover:border-zinc-500 dark:group-hover:border-zinc-600 transition-colors"
+                            style={{ borderRadius: 12, background: "rgba(128,128,128,0.15)", backdropFilter: "blur(8px)" }}>
+                            <MessageCircle size={20} strokeWidth={1.5} className="text-zinc-700 dark:text-white" />
                         </div>
-                        <span className="font-mono text-[9px] font-black text-white/50 tabular-nums">{fmtCount(reel.commentsCount)}</span>
+                        <span className="font-mono text-[9px] font-black text-zinc-500 dark:text-white/50 tabular-nums">{fmtCount(reel.commentsCount)}</span>
                     </Link>
                     <button onClick={handleShare} className="flex flex-col items-center gap-1.5 group active:scale-90 transition-transform">
-                        <div className="w-11 h-11 flex items-center justify-center border transition-all duration-200" style={{ borderRadius: 12, borderColor: copied ? "rgba(34,197,94,0.5)" : "rgba(63,63,70,1)", background: copied ? "rgba(34,197,94,0.1)" : "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}>
-                            {copied ? <Check size={18} strokeWidth={2.5} className="text-green-400" /> : <Share2 size={18} strokeWidth={1.5} className="text-white" />}
+                        <div className="w-11 h-11 flex items-center justify-center border transition-all duration-200"
+                            style={{ borderRadius: 12, borderColor: copied ? "rgba(34,197,94,0.5)" : "rgba(120,120,128,0.4)", background: copied ? "rgba(34,197,94,0.1)" : "rgba(128,128,128,0.15)", backdropFilter: "blur(8px)" }}>
+                            {copied ? <Check size={18} strokeWidth={2.5} className="text-green-500" /> : <Share2 size={18} strokeWidth={1.5} className="text-zinc-700 dark:text-white" />}
                         </div>
-                        <span className={`font-mono text-[9px] font-black tabular-nums transition-colors ${copied ? "text-green-400" : "text-white/50"}`}>{copied ? "Done" : "Share"}</span>
+                        <span className={`font-mono text-[9px] font-black tabular-nums transition-colors ${copied ? "text-green-500" : "text-zinc-500 dark:text-white/50"}`}>{copied ? "Done" : "Share"}</span>
                     </button>
                     <button onClick={e => { e.stopPropagation(); setMuted(m => !m); }} className="flex flex-col items-center gap-1.5 group active:scale-90 transition-transform">
-                        <div className="w-11 h-11 flex items-center justify-center border border-zinc-800 group-hover:border-zinc-600 transition-colors" style={{ borderRadius: 12, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}>
-                            {muted ? <VolumeX size={18} strokeWidth={1.5} className="text-white/40" /> : <Volume2 size={18} strokeWidth={1.5} className="text-white" />}
+                        <div className="w-11 h-11 flex items-center justify-center border border-zinc-300 dark:border-zinc-800 group-hover:border-zinc-500 dark:group-hover:border-zinc-600 transition-colors"
+                            style={{ borderRadius: 12, background: "rgba(128,128,128,0.15)", backdropFilter: "blur(8px)" }}>
+                            {muted ? <VolumeX size={18} strokeWidth={1.5} className="text-zinc-400 dark:text-white/40" /> : <Volume2 size={18} strokeWidth={1.5} className="text-zinc-700 dark:text-white" />}
                         </div>
-                        <span className="font-mono text-[9px] font-black text-white/50">{muted ? "Off" : "On"}</span>
+                        <span className="font-mono text-[9px] font-black text-zinc-500 dark:text-white/50">{muted ? "Off" : "On"}</span>
                     </button>
                 </div>
             </div>
@@ -345,15 +397,15 @@ async function fetchReelsPage(cursor?: string): Promise<ReelsPage> {
 // ─── Loading screen ───────────────────────────────────────────────────────────
 function LoadingScreen() {
     return (
-        <div className="h-[calc(100dvh-7.5rem)] md:h-screen bg-black flex flex-col items-center justify-center gap-5">
+        <div className="h-[calc(100dvh-7.5rem)] md:h-screen bg-zinc-100 dark:bg-black flex flex-col items-center justify-center gap-5 relative">
             <div className="rl-dot-grid absolute inset-0 pointer-events-none" />
             <div className="relative grid grid-cols-3 gap-[6px]">
                 {[...Array(9)].map((_, i) => (
-                    <div key={i} className={`w-[7px] h-[7px] rounded-full ${i === 4 ? "bg-red-600" : "bg-zinc-800"}`}
+                    <div key={i} className={`w-[7px] h-[7px] rounded-full ${i === 4 ? "bg-red-600" : "bg-zinc-400 dark:bg-zinc-800"}`}
                         style={{ animation: "rl-pulse 1.2s ease infinite", animationDelay: `${i * 0.08}s` }} />
                 ))}
             </div>
-            <p className="font-mono text-[8px] font-black tracking-[0.5em] uppercase text-zinc-600">Loading_Reels</p>
+            <p className="font-mono text-[8px] font-black tracking-[0.5em] uppercase text-zinc-500 dark:text-zinc-600">Loading_Reels</p>
         </div>
     );
 }
@@ -436,12 +488,12 @@ export default function ReelsPage() {
     if (error) return (
         <>
             <style>{GCSS}</style>
-            <div className="h-[calc(100dvh-7.5rem)] md:h-screen bg-black flex flex-col items-center justify-center gap-4 relative">
+            <div className="h-[calc(100dvh-7.5rem)] md:h-screen bg-zinc-100 dark:bg-black flex flex-col items-center justify-center gap-4 relative">
                 <div className="rl-dot-grid absolute inset-0 pointer-events-none" />
                 <div className="relative z-10 text-center space-y-3">
                     <p className="font-mono text-[8px] font-black tracking-[0.4em] uppercase text-red-600">Signal_Lost</p>
-                    <p className="font-mono text-[11px] text-zinc-500">{error}</p>
-                    <button onClick={retry} className="font-mono text-[9px] font-black tracking-[0.25em] uppercase px-5 py-2.5 bg-white text-black hover:bg-red-600 hover:text-white transition-colors" style={{ borderRadius: 8 }}>
+                    <p className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400">{error}</p>
+                    <button onClick={retry} className="font-mono text-[9px] font-black tracking-[0.25em] uppercase px-5 py-2.5 bg-black dark:bg-white text-white dark:text-black hover:bg-red-600 hover:text-white transition-colors" style={{ borderRadius: 8 }}>
                         Retry_Connection
                     </button>
                 </div>
@@ -452,14 +504,14 @@ export default function ReelsPage() {
     if (reels.length === 0) return (
         <>
             <style>{GCSS}</style>
-            <div className="h-[calc(100dvh-7.5rem)] md:h-screen bg-black flex flex-col items-center justify-center gap-5 relative">
+            <div className="h-[calc(100dvh-7.5rem)] md:h-screen bg-zinc-100 dark:bg-black flex flex-col items-center justify-center gap-5 relative">
                 <div className="rl-dot-grid absolute inset-0 pointer-events-none" />
-                <div className="relative z-10 w-14 h-14 border border-zinc-800 flex items-center justify-center" style={{ borderRadius: 14 }}>
-                    <Film size={20} strokeWidth={1.5} className="text-zinc-700" />
+                <div className="relative z-10 w-14 h-14 border border-zinc-300 dark:border-zinc-800 flex items-center justify-center" style={{ borderRadius: 14 }}>
+                    <Film size={20} strokeWidth={1.5} className="text-zinc-400 dark:text-zinc-700" />
                 </div>
                 <div className="relative z-10 text-center">
-                    <p className="font-mono text-[8px] font-black tracking-[0.4em] uppercase text-zinc-600 mb-1">No_Transmissions</p>
-                    <p className="font-mono text-[12px] font-black text-white uppercase tracking-[0.07em]">Feed Empty</p>
+                    <p className="font-mono text-[8px] font-black tracking-[0.4em] uppercase text-zinc-500 dark:text-zinc-600 mb-1">No_Transmissions</p>
+                    <p className="font-mono text-[12px] font-black text-black dark:text-white uppercase tracking-[0.07em]">Feed Empty</p>
                 </div>
             </div>
         </>
@@ -469,7 +521,7 @@ export default function ReelsPage() {
         <>
             <style>{GCSS}</style>
 
-            <div className="relative h-[calc(100dvh-7.5rem)] md:h-screen bg-black overflow-hidden">
+            <div className="relative h-[calc(100dvh-7.5rem)] md:h-screen bg-zinc-100 dark:bg-black overflow-hidden">
 
                 {/* ── Top HUD ── */}
                 <div className="absolute top-0 left-0 right-0 z-30 pointer-events-none">
@@ -477,16 +529,16 @@ export default function ReelsPage() {
                         <div className="flex items-center gap-2.5">
                             <div className="w-px h-4 bg-red-600/60 shrink-0" />
                             <div>
-                                <p className="font-mono text-[7px] font-black tracking-[0.45em] uppercase text-white/25 leading-none">Zynon</p>
-                                <p className="font-mono text-[14px] font-black text-white uppercase tracking-[0.1em] leading-none mt-0.5">Reels</p>
+                                <p className="font-mono text-[7px] font-black tracking-[0.45em] uppercase text-black/25 dark:text-white/25 leading-none">Zynon</p>
+                                <p className="font-mono text-[14px] font-black text-black dark:text-white uppercase tracking-[0.1em] leading-none mt-0.5">Reels</p>
                             </div>
                         </div>
                         <div
-                            className="flex items-center gap-2 px-3 py-1.5 border border-white/10"
-                            style={{ borderRadius: 8, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)" }}
+                            className="flex items-center gap-2 px-3 py-1.5 border border-black/10 dark:border-white/10"
+                            style={{ borderRadius: 8, background: "rgba(255,255,255,0.7)", backdropFilter: "blur(8px)" }}
                         >
                             <LiveDot size={5} />
-                            <span className="font-mono text-[8px] font-black text-white/40 tabular-nums tracking-[0.15em]">
+                            <span className="font-mono text-[8px] font-black text-black/50 dark:text-white/40 tabular-nums tracking-[0.15em]">
                                 {String(activeIndex + 1).padStart(2, "0")}/{String(reels.length).padStart(2, "0")}
                             </span>
                         </div>
@@ -498,7 +550,7 @@ export default function ReelsPage() {
                             <div key={i} className="rounded-full transition-all duration-300" style={{
                                 width:  i === activeIndex ? 18 : 4,
                                 height: 3,
-                                background: i === activeIndex ? "#ef4444" : "rgba(255,255,255,0.18)",
+                                background: i === activeIndex ? "#ef4444" : "rgba(0,0,0,0.15)",
                                 boxShadow: i === activeIndex ? "0 0 6px rgba(255,0,0,0.6)" : "none",
                             }} />
                         ))}
@@ -514,10 +566,10 @@ export default function ReelsPage() {
                     ))}
 
                     {loadingMore && (
-                        <div className="w-full h-[calc(100dvh-7.5rem)] md:h-screen bg-black flex items-center justify-center" style={{ scrollSnapAlign: "start" }}>
+                        <div className="w-full h-[calc(100dvh-7.5rem)] md:h-screen bg-zinc-100 dark:bg-black flex items-center justify-center" style={{ scrollSnapAlign: "start" }}>
                             <div className="grid grid-cols-3 gap-[5px]">
                                 {[...Array(9)].map((_, i) => (
-                                    <div key={i} className={`w-[5px] h-[5px] rounded-full ${i === 4 ? "bg-red-600" : "bg-zinc-800"}`}
+                                    <div key={i} className={`w-[5px] h-[5px] rounded-full ${i === 4 ? "bg-red-600" : "bg-zinc-400 dark:bg-zinc-800"}`}
                                         style={{ animation: "rl-pulse 1.2s ease infinite", animationDelay: `${i * 0.08}s` }} />
                                 ))}
                             </div>
@@ -525,14 +577,14 @@ export default function ReelsPage() {
                     )}
 
                     {!hasMore && !loadingMore && reels.length > 0 && (
-                        <div className="w-full h-[calc(100dvh-7.5rem)] md:h-screen bg-black flex flex-col items-center justify-center gap-4 relative" style={{ scrollSnapAlign: "start" }}>
+                        <div className="w-full h-[calc(100dvh-7.5rem)] md:h-screen bg-zinc-100 dark:bg-black flex flex-col items-center justify-center gap-4 relative" style={{ scrollSnapAlign: "start" }}>
                             <div className="rl-dot-grid absolute inset-0 pointer-events-none" />
                             <div className="relative z-10 flex items-center gap-3">
-                                <div className="h-px w-8 bg-zinc-800" />
+                                <div className="h-px w-8 bg-zinc-300 dark:bg-zinc-800" />
                                 <div className="w-1.5 h-1.5 rounded-full bg-red-600" style={{ animation: "rl-pulse 2s ease infinite" }} />
-                                <div className="h-px w-8 bg-zinc-800" />
+                                <div className="h-px w-8 bg-zinc-300 dark:bg-zinc-800" />
                             </div>
-                            <p className="relative z-10 font-mono text-[8px] font-black tracking-[0.4em] uppercase text-zinc-700">All_Reels_Watched</p>
+                            <p className="relative z-10 font-mono text-[8px] font-black tracking-[0.4em] uppercase text-zinc-400 dark:text-zinc-700">All_Reels_Watched</p>
                         </div>
                     )}
                 </div>

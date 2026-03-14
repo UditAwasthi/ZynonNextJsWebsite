@@ -7,7 +7,8 @@ import toast from "react-hot-toast"
 import api from "../../lib/api/api" // ← adjust path
 import {
     Plus, X, Globe, Lock, Loader2,
-    CheckCircle2, XCircle, ChevronDown, ChevronUp, ImageIcon
+    CheckCircle2, XCircle, ChevronDown, ChevronUp, ImageIcon,
+    ChevronLeft, ChevronRight
 } from "lucide-react"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,6 +171,105 @@ export function UploadProgressWidget() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// FILMSTRIP — drag to reorder, arrow buttons to shift, click to preview
+// ─────────────────────────────────────────────────────────────────────────────
+interface FilmStripProps {
+    files: any[]
+    selectedIndex: number
+    onSelect: (i: number) => void
+    onRemove: (i: number) => void
+    onReorder: (from: number, to: number) => void
+    onAdd: () => void
+}
+
+function FilmStrip({ files, selectedIndex, onSelect, onRemove, onReorder, onAdd }: FilmStripProps) {
+    const dragIndex = useRef<number | null>(null)
+    const [dragOver, setDragOver] = useState<number | null>(null)
+
+    const move = (i: number, dir: -1 | 1) => {
+        const to = i + dir
+        if (to < 0 || to >= files.length) return
+        onReorder(i, to)
+    }
+
+    return (
+        <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar items-center">
+            {files.map((file, i) => (
+                <div
+                    key={file.preview}
+                    draggable
+                    onDragStart={() => { dragIndex.current = i }}
+                    onDragOver={e => { e.preventDefault(); setDragOver(i) }}
+                    onDragLeave={() => setDragOver(null)}
+                    onDrop={e => {
+                        e.preventDefault()
+                        setDragOver(null)
+                        if (dragIndex.current !== null && dragIndex.current !== i) {
+                            onReorder(dragIndex.current, i)
+                        }
+                        dragIndex.current = null
+                    }}
+                    onDragEnd={() => { dragIndex.current = null; setDragOver(null) }}
+                    onClick={() => onSelect(i)}
+                    className={`relative shrink-0 w-[68px] h-[68px] rounded-[14px] overflow-hidden border-2 cursor-grab active:cursor-grabbing transition-all duration-200
+                        ${selectedIndex === i ? "border-[#E8001A] opacity-100" : "border-transparent opacity-40 hover:opacity-75"}
+                        ${dragOver === i ? "scale-105 border-[#E8001A]/60" : ""}
+                    `}
+                >
+                    <img src={file.preview} className="w-full h-full object-cover grayscale" alt="" draggable={false} />
+
+                    {/* Delete on hover — top-right X */}
+                    <button
+                        onClick={e => { e.stopPropagation(); onRemove(i) }}
+                        className="absolute top-1 right-1 z-20 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity"
+                        style={{ opacity: undefined }}
+                        onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                        onMouseLeave={e => (e.currentTarget.style.opacity = "0")}
+                    >
+                        <X size={9} className="text-white" />
+                    </button>
+
+                    {/* Arrow buttons — visible on selected */}
+                    {selectedIndex === i && files.length > 1 && (
+                        <>
+                            {i > 0 && (
+                                <button
+                                    onClick={e => { e.stopPropagation(); move(i, -1) }}
+                                    className="absolute left-0.5 top-1/2 -translate-y-1/2 z-20 w-5 h-5 rounded-md bg-black/70 flex items-center justify-center hover:bg-[#E8001A] transition-colors"
+                                >
+                                    <ChevronLeft size={11} className="text-white" />
+                                </button>
+                            )}
+                            {i < files.length - 1 && (
+                                <button
+                                    onClick={e => { e.stopPropagation(); move(i, 1) }}
+                                    className="absolute right-0.5 top-1/2 -translate-y-1/2 z-20 w-5 h-5 rounded-md bg-black/70 flex items-center justify-center hover:bg-[#E8001A] transition-colors"
+                                >
+                                    <ChevronRight size={11} className="text-white" />
+                                </button>
+                            )}
+                        </>
+                    )}
+
+                    {/* Position badge */}
+                    <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/60 pointer-events-none">
+                        <span className="font-mono text-[7px] font-black text-white/70">{i + 1}</span>
+                    </div>
+                </div>
+            ))}
+
+            {/* Add more */}
+            <button
+                onClick={onAdd}
+                className="shrink-0 w-[68px] h-[68px] rounded-[14px] border border-dashed border-zinc-300 dark:border-zinc-800 flex items-center justify-center text-zinc-400 hover:border-[#E8001A] hover:text-[#E8001A] transition-all duration-200"
+            >
+                <Plus size={18} />
+            </button>
+        </div>
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CREATE PAGE CONTENT
 // ─────────────────────────────────────────────────────────────────────────────
 interface Props {
@@ -195,15 +295,28 @@ export default function CreatePageContent({ onSubmit }: Props) {
 
     // ── File helpers ──────────────────────────────────────────────────────────
     const addFiles = useCallback((incoming: FileList) => {
+        const IMAGE_EXTS = new Set(["jpg","jpeg","png","gif","webp","avif","heic","heif","bmp","tiff","tif","svg"])
+        const VIDEO_EXTS = new Set(["mp4","mov","m4v","webm","mkv","avi","wmv","flv","3gp","ts","mts","m2ts"])
+
+        const guessType = (f: File): "image" | "video" | null => {
+            if (f.type.startsWith("image/")) return "image"
+            if (f.type.startsWith("video/")) return "video"
+            // f.type is empty for HEIC, MOV, MKV, some MP4s — fall back to extension
+            const ext = f.name.split(".").pop()?.toLowerCase() ?? ""
+            if (IMAGE_EXTS.has(ext)) return "image"
+            if (VIDEO_EXTS.has(ext)) return "video"
+            return null
+        }
+
         const valid = Array.from(incoming).filter(f => {
-            if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) return false
-            if (f.size > 20 * 1024 * 1024) { toast.error(`${f.name.slice(0, 12)}... exceeds 20MB`); return false }
+            if (!guessType(f)) { toast.error(`${f.name.slice(0, 20)} — unsupported type`); return false }
+            if (f.size > 50 * 1024 * 1024) { toast.error(`${f.name.slice(0, 12)}... exceeds 50MB`); return false }
             return true
         })
         setFiles(prev => [...prev, ...valid.map(f => ({
             file: f,
             preview: URL.createObjectURL(f),
-            type: f.type.startsWith("image/") ? "image" : "video"
+            type: guessType(f) as "image" | "video"
         }))])
     }, [])
 
@@ -371,32 +484,24 @@ export default function CreatePageContent({ onSubmit }: Props) {
                             ))}
                         </div>
 
-                        {/* Filmstrip */}
+                        {/* Filmstrip — drag to reorder, arrows to shift, click to preview */}
                         {files.length > 0 && (
-                            <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-                                {files.map((file, i) => (
-                                    <div
-                                        key={i}
-                                        onClick={() => setSelectedIndex(i)}
-                                        className={`relative shrink-0 w-[68px] h-[68px] rounded-[14px] overflow-hidden border-2 cursor-pointer transition-all duration-200
-                                            ${selectedIndex === i ? "border-[#E8001A] opacity-100" : "border-transparent opacity-30 hover:opacity-70"}`}
-                                    >
-                                        <img src={file.preview} className="w-full h-full object-cover grayscale" alt="" />
-                                        <button
-                                            onClick={e => { e.stopPropagation(); removeFile(i) }}
-                                            className="absolute inset-0 bg-[#E8001A]/80 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity"
-                                        >
-                                            <X size={13} className="text-white" />
-                                        </button>
-                                    </div>
-                                ))}
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="shrink-0 w-[68px] h-[68px] rounded-[14px] border border-dashed border-zinc-300 dark:border-zinc-800 flex items-center justify-center text-zinc-400 hover:border-[#E8001A] hover:text-[#E8001A] transition-all duration-200"
-                                >
-                                    <Plus size={18} />
-                                </button>
-                            </div>
+                            <FilmStrip
+                                files={files}
+                                selectedIndex={selectedIndex}
+                                onSelect={setSelectedIndex}
+                                onRemove={removeFile}
+                                onReorder={(from, to) => {
+                                    setFiles(prev => {
+                                        const next = [...prev]
+                                        const [moved] = next.splice(from, 1)
+                                        next.splice(to, 0, moved)
+                                        return next
+                                    })
+                                    setSelectedIndex(to)
+                                }}
+                                onAdd={() => fileInputRef.current?.click()}
+                            />
                         )}
                     </div>
 
@@ -491,7 +596,6 @@ export default function CreatePageContent({ onSubmit }: Props) {
                 onChange={e => e.target.files && addFiles(e.target.files)}
                 multiple
                 className="hidden"
-                accept="image/*,video/*"
             />
         </div>
     )
