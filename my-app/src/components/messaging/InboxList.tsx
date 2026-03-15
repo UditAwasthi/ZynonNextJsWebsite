@@ -1,20 +1,14 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { 
-    Search, 
-    Users, 
-    X, 
-    MessageSquarePlus, 
-    Camera, 
-    Video, 
-    Mic, 
-    FileText 
+import { useState } from "react";
+import {
+    Search, Users, MessageSquarePlus,
+    Camera, Video, Mic, FileText
 } from "lucide-react";
-import { getInbox } from "../../lib/api/chatApi";
 import { cacheUsers } from "../../lib/userSearchCache";
 import { Avatar } from "./Avatar";
 import CreateGroupModal from "./CreateGroupModal";
+import { useInbox } from "../../hooks/useInbox";
 
 export interface Thread {
     threadId: string;
@@ -39,61 +33,24 @@ interface Props {
     unreadMap: Record<string, number>;
 }
 
-const _picCache: Record<string, string | null> = {};
-
-async function enrichThreadsWithProfilePics(threads: Thread[]): Promise<Thread[]> {
-    const toFetch = threads.filter(t => t.type === "dm" && t.user && !_picCache[t.user._id]);
-    await Promise.allSettled(
-        toFetch.map(async t => {
-            const username = t.user!.username;
-            try {
-                const { data } = await import("../../lib/api/api").then(m => m.default.get(`/profile/${username}`));
-                const pic = data?.data?.profilePicture ?? data?.data?.profile?.profilePicture ?? null;
-                _picCache[t.user!._id] = pic;
-            } catch {
-                _picCache[t.user!._id] = null;
-            }
-        })
-    );
-    return threads.map(t => {
-        if (t.type !== "dm" || !t.user) return t;
-        const pic = _picCache[t.user._id];
-        if (!pic) return t;
-        return { ...t, user: { ...t.user, profilePicture: pic } };
-    });
-}
-
 export default function InboxList({ onSelect, activeId, currentUserId, token, unreadMap }: Props) {
-    const [threads, setThreads] = useState<Thread[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { threads, loading, prependThread } = useInbox(token, currentUserId);
     const [search, setSearch] = useState("");
     const [showGroupModal, setShowGroupModal] = useState(false);
 
-    useEffect(() => { fetchInbox(); }, []);
-
-    const fetchInbox = async () => {
-        try {
-            const res = await getInbox();
-            const data: Thread[] = res.data?.data ?? [];
-            const enriched = await enrichThreadsWithProfilePics(data);
-            setThreads(enriched);
-
-            cacheUsers(
-                enriched
-                    .filter(t => t.type === "dm" && t.user)
-                    .map(t => ({
-                        _id: t.user!._id,
-                        username: t.user!.username,
-                        name: t.user!.username,
-                        profilePicture: t.user!.profilePicture,
-                    }))
-            );
-        } catch {
-            // Error handling
-        } finally {
-            setLoading(false);
-        }
-    };
+    // Cache DM users for the UserSearchInput autocomplete
+    if (threads.length > 0) {
+        cacheUsers(
+            threads
+                .filter(t => t.type === "dm" && t.user)
+                .map(t => ({
+                    _id: t.user!._id,
+                    username: t.user!.username,
+                    name: t.user!.username,
+                    profilePicture: t.user!.profilePicture,
+                }))
+        );
+    }
 
     const filtered = threads.filter(t => {
         const name = t.type === "dm" ? t.user?.username : t.name;
@@ -120,7 +77,7 @@ export default function InboxList({ onSelect, activeId, currentUserId, token, un
             case "image": return <Camera size={14} className="inline mr-1 text-blue-500" />;
             case "video": return <Video size={14} className="inline mr-1 text-purple-500" />;
             case "audio": return <Mic size={14} className="inline mr-1 text-red-500" />;
-            case "file": return <FileText size={14} className="inline mr-1 text-emerald-500" />;
+            case "file":  return <FileText size={14} className="inline mr-1 text-emerald-500" />;
             default: return null;
         }
     };
@@ -128,13 +85,13 @@ export default function InboxList({ onSelect, activeId, currentUserId, token, un
     const getPreview = (thread: Thread) => {
         const msg = thread.lastMessage;
         if (!msg) return "Start a conversation";
-        if (msg.mediaType === "image") return "Photo";
-        if (msg.mediaType === "video") return "Video";
-        if (msg.mediaType === "audio") return "Voice message";
-        if (msg.mediaType === "file") return "File";
+        if (msg.mediaType === "image") return "📷 Photo";
+        if (msg.mediaType === "video") return "🎥 Video";
+        if (msg.mediaType === "audio") return "🎤 Voice message";
+        if (msg.mediaType === "file")  return "📄 File";
         if (!msg.content) return "Sent a message";
         const isMine = msg.senderId === currentUserId;
-        const text = msg.content.length > 30 ? msg.content.slice(0, 30) + "…" : msg.content;
+        const text = msg.content.length > 32 ? msg.content.slice(0, 32) + "…" : msg.content;
         return (isMine ? "You: " : "") + text;
     };
 
@@ -146,22 +103,18 @@ export default function InboxList({ onSelect, activeId, currentUserId, token, un
                     to   { opacity: 1; transform: translateX(0); }
                 }
                 .inbox-item { animation: inboxSlideIn 0.3s ease both; }
-
                 .active-item {
                     background: white;
-                    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+                    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.04), 0 8px 10px -6px rgba(0,0,0,0.04);
                 }
                 .dark .active-item {
                     background: #18181b;
-                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+                    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
                 }
-
                 .unread-indicator::before {
                     content: '';
                     position: absolute;
-                    left: 0;
-                    top: 25%;
-                    bottom: 25%;
+                    left: 0; top: 25%; bottom: 25%;
                     width: 4px;
                     background: #3b82f6;
                     border-radius: 0 4px 4px 0;
@@ -195,7 +148,7 @@ export default function InboxList({ onSelect, activeId, currentUserId, token, un
                     <Search size={18} className="text-zinc-400 group-focus-within:text-zinc-900 dark:group-focus-within:text-white transition-colors" />
                     <input
                         type="text"
-                        placeholder="Search chats..."
+                        placeholder="Search chats…"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         className="flex-1 bg-transparent text-[15px] outline-none placeholder-zinc-500 text-zinc-900 dark:text-white font-semibold"
@@ -203,7 +156,7 @@ export default function InboxList({ onSelect, activeId, currentUserId, token, un
                 </div>
             </div>
 
-            {/* List */}
+            {/* Thread List */}
             <div className="flex-1 overflow-y-auto px-4 space-y-1 scrollbar-hide">
                 {loading ? (
                     <div className="space-y-3">
@@ -241,13 +194,13 @@ export default function InboxList({ onSelect, activeId, currentUserId, token, un
                                             name={name || "Group"}
                                             size={56}
                                             isGroup={thread.type === "group"}
-                                            className={`rounded-2xl transition-all duration-500 shadow-sm ${isActive ? 'scale-110 shadow-md' : 'group-hover:scale-105'}`} 
+                                            className={`rounded-2xl transition-all duration-500 shadow-sm ${isActive ? "scale-110 shadow-md" : "group-hover:scale-105"}`}
                                         />
                                         {unread > 0 && (
                                             <span className="absolute -top-1 -right-1 flex h-6 w-6">
-                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                                                 <span className="relative inline-flex rounded-full h-6 w-6 bg-blue-600 dark:bg-blue-500 text-[10px] font-black text-white items-center justify-center border-2 border-white dark:border-zinc-900">
-                                                    {unread > 9 ? '9+' : unread}
+                                                    {unread > 9 ? "9+" : unread}
                                                 </span>
                                             </span>
                                         )}
@@ -256,7 +209,9 @@ export default function InboxList({ onSelect, activeId, currentUserId, token, un
                                     <div className="flex-1 min-w-0 text-left">
                                         <div className="flex justify-between items-center mb-0.5">
                                             <h3 className={`text-[15px] truncate transition-colors ${
-                                                isActive || unread > 0 ? "font-black text-zinc-900 dark:text-white" : "font-bold text-zinc-600 dark:text-zinc-400"
+                                                isActive || unread > 0
+                                                    ? "font-black text-zinc-900 dark:text-white"
+                                                    : "font-bold text-zinc-600 dark:text-zinc-400"
                                             }`}>
                                                 {name}
                                             </h3>
@@ -268,13 +223,17 @@ export default function InboxList({ onSelect, activeId, currentUserId, token, un
                                         </div>
                                         <div className="flex items-center justify-between">
                                             <p className={`text-[13px] truncate pr-4 leading-tight ${
-                                                unread > 0 && !isActive ? "text-zinc-900 dark:text-zinc-100 font-bold" : "text-zinc-500 dark:text-zinc-500 font-medium"
+                                                unread > 0 && !isActive
+                                                    ? "text-zinc-900 dark:text-zinc-100 font-bold"
+                                                    : "text-zinc-500 dark:text-zinc-500 font-medium"
                                             }`}>
                                                 {getPreviewIcon(thread.lastMessage?.mediaType)}
                                                 {getPreview(thread)}
                                             </p>
                                             {(isActive || unread > 0) && (
-                                                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? 'bg-zinc-400/20' : 'bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)]'}`} />
+                                                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                                    isActive ? "bg-zinc-400/20" : "bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)]"
+                                                }`} />
                                             )}
                                         </div>
                                     </div>
@@ -289,7 +248,7 @@ export default function InboxList({ onSelect, activeId, currentUserId, token, un
                 <CreateGroupModal
                     onClose={() => setShowGroupModal(false)}
                     onCreated={(thread) => {
-                        setThreads(prev => [thread, ...prev]);
+                        prependThread(thread);
                         onSelect(thread);
                         setShowGroupModal(false);
                     }}

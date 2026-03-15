@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { ArrowLeft, Phone, Video, Info, Image as ImageIcon, Send, X, Users, Search, ChevronUp, ChevronDown } from "lucide-react";
+import {
+    ArrowLeft, Info, Image as ImageIcon, Send, X,
+    Users, Search, ChevronUp, ChevronDown
+} from "lucide-react";
 import Link from "next/link";
+import { getSocket } from "../../lib/socket";
 import { useChat, type Message } from "../../hooks/useChat";
 import MessageBubble from "./MessageBubble";
 import ForwardModal from "./ForwardModal";
@@ -21,18 +25,20 @@ interface Props {
     token: string;
 }
 
-// We need to look up profile pictures for group participants
-// They come through from senderId once populated — cache them locally
+// Profile picture cache — keyed by userId, populated lazily
 const profilePicCache: Record<string, string> = {};
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function isNearBottom(el: HTMLDivElement, threshold = 120): boolean {
+function isNearBottom(el: HTMLDivElement, threshold = 150): boolean {
     return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
 }
 
 export default function ChatThread({ thread, onBack, currentUserId, token }: Props) {
-    const { messages, setMessages, isTyping, emitTypingStart, emitTypingStop } =
-        useChat(thread.threadId, token);
+    const {
+        messages, setMessages,
+        isTyping, typingUsers,
+        emitTypingStart, emitTypingStop,
+        emitDelivered, emitHeartbeat
+    } = useChat(thread.threadId, token);
 
     const [input, setInput] = useState("");
     const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -45,8 +51,9 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
     const [cursor, setCursor] = useState<string | undefined>();
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [isOnline, setIsOnline] = useState(false);
 
-    // ── Search state ─────────────────────────────────────────────────────────
+    // ── Search state ──────────────────────────────────────────────────────────
     const [showSearch, setShowSearch] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<Message[]>([]);
@@ -60,17 +67,51 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
     const scrollRef = useRef<HTMLDivElement>(null);
     const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const prevScrollHeight = useRef(0);
+    const prevMsgCount = useRef(0);
+    // Throttle scroll-to-load so it doesn't fire 20× per scroll
+    const loadMoreThrottleRef = useRef(false);
 
     const isGroup = thread.type === "group";
-    const isAdmin = false; // derive from participants when available
 
+    // ── Derive isAdmin from thread participants ────────────────────────────────
+    // The Thread type comes from the inbox and carries participants when the
+    // server populates them. Fall back to false if not present.
+    const isAdmin = (thread as any).participants?.some(
+        (p: any) => p.userId?._id === currentUserId && ["admin", "owner"].includes(p.role)
+    ) ?? false;
+
+    // ── Heartbeat: keep Redis online key alive ────────────────────────────────
     useEffect(() => {
-        prevMsgCount.current = 0; // reset for new thread
+        const interval = setInterval(emitHeartbeat, 25_000);
+        return () => clearInterval(interval);
+    }, [emitHeartbeat]);
+
+    // ── Online presence for DM header ─────────────────────────────────────────
+    useEffect(() => {
+        if (isGroup || !thread.user) return;
+        const socket = getSocket(token);
+        const otherId = thread.user._id;
+
+        const onOnline  = ({ userId }: { userId: string }) => { if (userId === otherId) setIsOnline(true);  };
+        const onOffline = ({ userId }: { userId: string }) => { if (userId === otherId) setIsOnline(false); };
+
+        socket.on("user_online",  onOnline);
+        socket.on("user_offline", onOffline);
+        return () => {
+            socket.off("user_online",  onOnline);
+            socket.off("user_offline", onOffline);
+        };
+    }, [token, isGroup, thread.user]);
+
+    // ── Load history when thread changes ─────────────────────────────────────
+    useEffect(() => {
+        prevMsgCount.current = 0;
+        setIsOnline(false);
         loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [thread.threadId]);
 
-    // Scroll to bottom on initial load (instant) and when I send a message (smooth)
-    const prevMsgCount = useRef(0);
+    // ── Auto-scroll ───────────────────────────────────────────────────────────
     useEffect(() => {
         if (loadingHistory) return;
         const newCount = messages.length;
@@ -78,34 +119,41 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
         const isMine = lastMsg?.senderId._id === currentUserId;
 
         if (prevMsgCount.current === 0) {
-            // Initial load — jump instantly
             bottomRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
         } else if (isMine || (scrollRef.current && isNearBottom(scrollRef.current))) {
-            // New message and user is near bottom — smooth scroll
             bottomRef.current?.scrollIntoView({ behavior: "smooth" });
         }
         prevMsgCount.current = newCount;
-    }, [messages.length, loadingHistory]);
+    }, [messages.length, loadingHistory, currentUserId]);
 
-    // When loading more (older), preserve scroll position
+    // Preserve scroll position when loading older messages
     useEffect(() => {
         if (loadingMore && scrollRef.current) {
             prevScrollHeight.current = scrollRef.current.scrollHeight;
         }
     }, [loadingMore]);
 
-    // Mark messages as seen
+    // ── Mark messages as seen + emit delivered ────────────────────────────────
     useEffect(() => {
-        const ids = messages
+        if (!messages.length) return;
+
+        const unseenIds = messages
             .filter(m => m.senderId._id !== currentUserId && !m.seenBy.includes(currentUserId))
             .map(m => m._id);
-        if (ids.length > 0) {
-            markMessagesSeen(thread.threadId, ids).catch(() => { });
-        }
-    }, [messages, currentUserId, thread.threadId]);
 
-    // Build profile pic cache — senderId only has { _id, username }, no profilePicture.
-    // Fetch each unique sender's pic once and cache it.
+        if (unseenIds.length > 0) {
+            markMessagesSeen(thread.threadId, unseenIds).catch(() => { });
+        }
+
+        // Emit delivered for messages not yet marked delivered to us
+        const undeliveredIds = messages
+            .filter(m => m.senderId._id !== currentUserId && !m.deliveredTo.includes(currentUserId))
+            .map(m => m._id);
+
+        undeliveredIds.forEach(id => emitDelivered(id));
+    }, [messages, currentUserId, thread.threadId, emitDelivered]);
+
+    // ── Profile picture cache ─────────────────────────────────────────────────
     useEffect(() => {
         const unseen = messages
             .filter(m => m.senderId._id && !profilePicCache[m.senderId._id])
@@ -114,15 +162,30 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
         const unique = [...new Map(unseen.map(u => [u.id, u])).values()];
         if (!unique.length) return;
 
-        unique.forEach(async ({ id, username }) => {
-            try {
-                const res = await import("../../lib/api/api").then(m => m.default.get(`/profile/${username}`));
-                const pic = res.data?.data?.profilePicture ?? res.data?.data?.profile?.profilePicture;
-                if (pic) profilePicCache[id] = pic;
-            } catch { }
-        });
+        // Use Promise.allSettled so one failure doesn't block the rest
+        Promise.allSettled(
+            unique.map(async ({ id, username }) => {
+                try {
+                    const res = await import("../../lib/api/api")
+                        .then(m => m.default.get(`/profile/${username}`));
+                    const pic = res.data?.data?.profilePicture ?? res.data?.data?.profile?.profilePicture;
+                    if (pic) profilePicCache[id] = pic;
+                } catch { }
+            })
+        );
     }, [messages]);
 
+    // ── Typing indicator label ────────────────────────────────────────────────
+    const typingLabel = (() => {
+        const ids = Object.keys(typingUsers);
+        if (!ids.length) return null;
+        if (!isGroup) return "Typing…";
+        if (ids.length === 1) return `${messages.find(m => m.senderId._id === ids[0])?.senderId.username ?? "Someone"} is typing…`;
+        if (ids.length === 2) return `${ids.length} people are typing…`;
+        return "Several people are typing…";
+    })();
+
+    // ── Data fetching ─────────────────────────────────────────────────────────
     const loadHistory = async () => {
         setLoadingHistory(true);
         try {
@@ -141,8 +204,9 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
         }
     };
 
-    const loadMore = async () => {
-        if (!hasMore || loadingMore || !cursor) return;
+    const loadMore = useCallback(async () => {
+        if (!hasMore || loadingMore || !cursor || loadMoreThrottleRef.current) return;
+        loadMoreThrottleRef.current = true;
         setLoadingMore(true);
         try {
             const res = await getMessages(thread.threadId, cursor);
@@ -156,7 +220,6 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
             setCursor(older[0].createdAt);
             setHasMore(older.length === 30);
 
-            // Restore scroll position after DOM update
             requestAnimationFrame(() => {
                 if (scrollRef.current) {
                     const diff = scrollRef.current.scrollHeight - prevScrollHeight.current;
@@ -166,30 +229,45 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
         } catch {
         } finally {
             setLoadingMore(false);
+            // Re-enable after 500ms to prevent rapid-fire triggers
+            setTimeout(() => { loadMoreThrottleRef.current = false; }, 500);
         }
-    };
+    }, [hasMore, loadingMore, cursor, thread.threadId, setMessages]);
 
-    const handleScroll = () => {
-        if (scrollRef.current && scrollRef.current.scrollTop < 100) {
+    const handleScroll = useCallback(() => {
+        if (scrollRef.current && scrollRef.current.scrollTop < 150) {
             loadMore();
         }
-    };
+    }, [loadMore]);
+
+    // ── Message actions ───────────────────────────────────────────────────────
 
     const handleSend = async () => {
         const text = input.trim();
+        // Allow send when editing even if text matches original; require text otherwise
         if (!text && !editingMsg) return;
 
         if (editingMsg) {
+            const prev = editingMsg;
+            // Optimistic update
+            setMessages(msgs => msgs.map(m =>
+                m._id === prev._id ? { ...m, content: text, isEdited: true } : m
+            ));
             setEditingMsg(null);
             setInput("");
-            await editMessage(editingMsg._id, text).catch(() => { });
+            await editMessage(prev._id, text).catch(() => {
+                // Revert on failure
+                setMessages(msgs => msgs.map(m =>
+                    m._id === prev._id ? { ...m, content: prev.content, isEdited: prev.isEdited } : m
+                ));
+            });
             return;
         }
 
         const currentReply = replyTo;
         setInput("");
         setReplyTo(null);
-        if (typingTimer.current !== null) clearTimeout(typingTimer.current ?? undefined);
+        if (typingTimer.current) clearTimeout(typingTimer.current);
         emitTypingStop();
 
         try {
@@ -210,9 +288,8 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setInput(e.target.value);
         emitTypingStart();
-        if (typingTimer.current !== null) clearTimeout(typingTimer.current ?? undefined);
+        if (typingTimer.current) clearTimeout(typingTimer.current);
         typingTimer.current = setTimeout(() => emitTypingStop(), 2000);
-        // Auto-resize
         const el = e.target;
         el.style.height = "auto";
         el.style.height = Math.min(el.scrollHeight, 120) + "px";
@@ -238,6 +315,24 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
         await forwardMessage(String(forwardMsg._id), targetThreadId).catch(() => { });
     };
 
+    const handleDelete = useCallback(async (messageId: string) => {
+        // Optimistic: mark as deleted immediately
+        setMessages(prev => prev.map(m =>
+            m._id === messageId
+                ? { ...m, isDeleted: true, content: undefined, attachments: [], reactions: [] }
+                : m
+        ));
+        await deleteMessage(messageId).catch(() => {
+            // Revert on failure — we don't have the original so just reload
+            loadHistory();
+        });
+    }, [setMessages]);
+
+    const handlePin = useCallback(async (messageId: string) => {
+        await pinMessage(messageId).catch(() => { });
+        // Socket will emit message_pinned back to update local state
+    }, []);
+
     const startEdit = (msg: Message) => {
         setEditingMsg(msg);
         setInput(msg.content || "");
@@ -258,7 +353,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
         if (inputRef.current) inputRef.current.style.height = "auto";
     };
 
-    // ── Search handlers ───────────────────────────────────────────────────────
+    // ── Search ────────────────────────────────────────────────────────────────
     const openSearch = () => {
         setShowSearch(true);
         setTimeout(() => searchInputRef.current?.focus(), 100);
@@ -276,23 +371,18 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
         setSearchQuery(q);
         setSearchIndex(0);
         if (!q.trim()) { setSearchResults([]); return; }
-        // Search client-side on already-loaded messages — no API call needed
         const q_lower = q.toLowerCase();
         const matches = messages.filter(m =>
-            m.content?.toLowerCase().includes(q_lower)
+            !m.isDeleted && m.content?.toLowerCase().includes(q_lower)
         );
         setSearchResults(matches);
-        // Auto-scroll to first match
-        if (matches.length > 0) {
-            setTimeout(() => scrollToMessage(matches[0]._id), 50);
-        }
+        if (matches.length > 0) setTimeout(() => scrollToMessage(matches[0]._id), 50);
     };
 
     const scrollToMessage = useCallback((msgId: string) => {
         const el = msgRefs.current[msgId];
         if (el) {
             el.scrollIntoView({ behavior: "smooth", block: "center" });
-            // Flash highlight
             el.classList.add("search-highlight");
             setTimeout(() => el.classList.remove("search-highlight"), 1500);
         }
@@ -305,7 +395,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
         scrollToMessage(searchResults[clamped]._id);
     }, [searchResults, scrollToMessage]);
 
-    // Group messages by date for dividers
+    // ── Group messages by date ────────────────────────────────────────────────
     const grouped = messages.reduce<{ date: string; msgs: Message[] }[]>((acc, msg) => {
         const d = new Date(msg.createdAt).toDateString();
         const last = acc[acc.length - 1];
@@ -327,9 +417,6 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
     const headerName = isGroup ? thread.name ?? "Group" : thread.user?.username ?? "User";
     const headerAvatar = isGroup ? thread.avatar : thread.user?.profilePicture;
 
-
-
-
     return (
         <div className="flex flex-col h-full bg-[#f8f9fb] dark:bg-[#0a0a0c] transition-colors duration-700">
             <style>{`
@@ -345,13 +432,13 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                 .search-highlight { animation: searchHighlight 1.5s ease forwards; border-radius: 12px; }
             `}</style>
 
-            {/* Floating Glass Header */}
+            {/* Header */}
             <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/70 dark:bg-[#121215]/80 border-b border-zinc-200/50 dark:border-zinc-800/50 shadow-sm transition-all">
                 <div className="px-4 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button
                             onClick={onBack}
-                            className="md:hidden group p-2 rounded-full hover:bg-white dark:hover:bg-zinc-800 shadow-none hover:shadow-md transition-all active:scale-90"
+                            className="md:hidden group p-2 rounded-full hover:bg-white dark:hover:bg-zinc-800 hover:shadow-md transition-all active:scale-90"
                         >
                             <ArrowLeft size={22} className="text-zinc-600 dark:text-zinc-300 group-hover:-translate-x-0.5 transition-transform" />
                         </button>
@@ -364,11 +451,13 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                 isGroup={isGroup}
                                 className="rounded-2xl shadow-sm group-hover:shadow-md transition-shadow"
                             />
-                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-[#121215] rounded-full" />
+                            {/* Only show online indicator for DMs, driven by socket */}
+                            {!isGroup && (
+                                <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-2 border-white dark:border-[#121215] rounded-full transition-colors ${isOnline ? "bg-green-500" : "bg-zinc-300 dark:bg-zinc-600"}`} />
+                            )}
                         </div>
 
                         <div className="flex flex-col">
-                            {/* Clickable username for DM threads */}
                             {!isGroup && thread.user?.username ? (
                                 <Link
                                     href={`/profile/${thread.user.username}`}
@@ -381,7 +470,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                     {headerName}
                                 </h2>
                             )}
-                            <div className="flex items-center gap-1.5 mt-1">
+                            <div className="flex items-center gap-1.5 mt-1 h-4">
                                 {isTyping ? (
                                     <div className="flex items-center gap-1">
                                         <span className="flex gap-1">
@@ -389,11 +478,13 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                                 <span key={d} className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: `${d}ms` }} />
                                             ))}
                                         </span>
-                                        <span className="text-[11px] font-bold text-blue-500 uppercase tracking-widest italic">Typing</span>
+                                        <span className="text-[11px] font-bold text-blue-500 uppercase tracking-widest italic">
+                                            {typingLabel}
+                                        </span>
                                     </div>
                                 ) : (
                                     <span className="text-[12px] font-medium text-zinc-400">
-                                        {isGroup ? "Community" : "Active now"}
+                                        {isGroup ? "Group" : isOnline ? "Active now" : "Offline"}
                                     </span>
                                 )}
                             </div>
@@ -401,7 +492,6 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {/* Search toggle */}
                         <button
                             onClick={showSearch ? closeSearch : openSearch}
                             className={`p-2.5 rounded-xl transition-all active:scale-95 ${
@@ -427,7 +517,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                     </div>
                 </div>
 
-                {/* Search bar — slides down when open */}
+                {/* Search bar */}
                 {showSearch && (
                     <div className="search-bar-in px-4 pb-3 flex items-center gap-2">
                         <div className="flex-1 flex items-center gap-2 bg-zinc-100 dark:bg-zinc-900 rounded-2xl px-4 py-2.5 border border-zinc-200/50 dark:border-zinc-800">
@@ -450,8 +540,6 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                 </span>
                             )}
                         </div>
-
-                        {/* Prev / Next */}
                         <button
                             onClick={() => goToResult(searchIndex - 1)}
                             disabled={!searchResults.length || searchIndex === 0}
@@ -470,16 +558,23 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                 )}
             </header>
 
-            {/* Messages Stage */}
+            {/* Messages */}
             <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className="flex-1 overflow-y-auto overscroll-contain px-4 lg:px-8 space-y-6 py-6 scroll-smooth"
+                className="flex-1 overflow-y-auto overscroll-contain px-4 lg:px-8 space-y-6 py-6"
             >
+                {/* Load more indicator */}
+                {loadingMore && (
+                    <div className="flex justify-center py-2">
+                        <div className="w-5 h-5 border-2 border-zinc-200 dark:border-zinc-700 border-t-blue-500 rounded-full animate-spin" />
+                    </div>
+                )}
+
                 {loadingHistory ? (
                     <div className="flex flex-col items-center justify-center h-full gap-4">
                         <div className="w-8 h-8 border-[3px] border-zinc-200 dark:border-zinc-800 border-t-blue-500 rounded-full animate-spin" />
-                        <p className="text-sm font-medium text-zinc-400 animate-pulse">Decrypting messages...</p>
+                        <p className="text-sm font-medium text-zinc-400 animate-pulse">Loading messages…</p>
                     </div>
                 ) : messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center py-20 animate-in fade-in zoom-in duration-700">
@@ -498,7 +593,6 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                     {formatDate(date)}
                                 </span>
                             </div>
-
                             <div className="space-y-1">
                                 {msgs.map((msg, i) => {
                                     const isMine = msg.senderId._id === currentUserId;
@@ -517,14 +611,13 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                                 currentUserId={currentUserId}
                                                 isAdmin={isAdmin}
                                                 senderProfilePicture={profilePicCache[msg.senderId._id]}
-                                                showSenderInfo={!isMine && !sameAsPrev}
-                                                // Pass these handlers to resolve the TS error:
+                                                showSenderInfo={isGroup && !isMine && !sameAsPrev}
                                                 onReply={setReplyTo}
                                                 onEdit={startEdit}
-                                                onDelete={id => deleteMessage(id).catch(() => { })}
-                                                onReact={(id, e) => addReaction(id, e).catch(() => { })}
+                                                onDelete={handleDelete}
+                                                onReact={(id, emoji) => addReaction(id, emoji).catch(() => { })}
                                                 onForward={setForwardMsg}
-                                                onPin={id => pinMessage(id).catch(() => { })}
+                                                onPin={handlePin}
                                             />
                                         </div>
                                     );
@@ -540,13 +633,13 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
             <div className="px-4 pb-6 pt-2 bg-gradient-to-t from-[#f8f9fb] via-[#f8f9fb] dark:from-[#0a0a0c] dark:via-[#0a0a0c] to-transparent">
                 <div className="max-w-4xl mx-auto">
 
-                    {/* Active Interaction Banner */}
+                    {/* Reply / Edit Banner */}
                     {(replyTo || editingMsg) && (
                         <div className="flex items-center gap-3 mx-2 mb-3 px-4 py-3 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md rounded-[20px] border border-zinc-200/50 dark:border-zinc-800/50 animate-in slide-in-from-bottom-4 duration-300 shadow-xl">
                             <div className="w-1 h-8 bg-blue-500 rounded-full" />
                             <div className="flex-1 min-w-0">
                                 <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest leading-none mb-1">
-                                    {editingMsg ? "Editing" : "Replying to " + replyTo?.senderId.username}
+                                    {editingMsg ? "Editing" : `Replying to ${replyTo?.senderId.username}`}
                                 </p>
                                 <p className="text-sm text-zinc-600 dark:text-zinc-400 truncate italic">
                                     "{editingMsg?.content || replyTo?.content || "Attachment"}"
@@ -558,13 +651,20 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                         </div>
                     )}
 
-                    {/* Main Input Bar */}
+                    {/* Input Bar */}
                     <div className="relative flex items-end gap-2 p-2 bg-white dark:bg-[#121215] rounded-[30px] border border-zinc-200/50 dark:border-zinc-800/50 shadow-[0_10px_40px_rgba(0,0,0,0.04)] dark:shadow-[0_10px_40px_rgba(0,0,0,0.2)]">
+                        <input
+                            ref={fileInputRef as any}
+                            type="file"
+                            accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+                            className="hidden"
+                            onChange={handleFileSelect}
+                        />
                         <button
-                            onClick={() => fileInputRef.current?.click()}
+                            onClick={() => (fileInputRef.current as any)?.click()}
                             className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-500 transition-all active:scale-90"
                         >
-                            <ImageIcon size={22} className="opacity-80 group-hover:opacity-100" />
+                            <ImageIcon size={22} className="opacity-80" />
                         </button>
 
                         <textarea
@@ -572,20 +672,22 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                             value={input}
                             onChange={handleInputChange}
                             onKeyDown={handleKeyDown}
-                            placeholder="Write your message..."
+                            placeholder="Write your message…"
                             className="flex-1 bg-transparent py-3 px-2 text-[15px] dark:text-white outline-none placeholder-zinc-400 leading-relaxed resize-none overflow-hidden"
                             style={{ height: "46px", maxHeight: "180px" }}
                         />
 
+                        {/* Send button enabled when editing too (even with same text) */}
                         <button
                             onClick={handleSend}
-                            disabled={!input.trim()}
-                            className={`w-11 h-11 flex items-center justify-center rounded-full transition-all duration-300 ${input.trim()
+                            disabled={!input.trim() && !editingMsg}
+                            className={`w-11 h-11 flex items-center justify-center rounded-full transition-all duration-300 ${
+                                (input.trim() || editingMsg)
                                     ? "bg-blue-600 text-white shadow-[0_4px_15px_rgba(37,99,235,0.4)] hover:scale-105 active:scale-95"
                                     : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
-                                }`}
+                            }`}
                         >
-                            <Send size={18} className={input.trim() ? "translate-x-0.5 -translate-y-0.5" : ""} />
+                            <Send size={18} className={(input.trim() || editingMsg) ? "translate-x-0.5 -translate-y-0.5" : ""} />
                         </button>
                     </div>
 

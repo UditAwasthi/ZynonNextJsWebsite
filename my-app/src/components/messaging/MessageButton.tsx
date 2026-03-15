@@ -1,44 +1,48 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { MessageSquare, Loader2 } from "lucide-react"
-import { createOrGetDMThread } from "../../lib/api/chatApi"
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { MessageSquare, Loader2 } from "lucide-react";
+import { createOrGetDMThread } from "../../lib/api/chatApi";
 
 interface MessageButtonProps {
-    userId: string
-    label?: string
-    className?: string
+    userId: string;
+    label?: string;
+    className?: string;
     /** compact = icon-only pill, useful inside tight layouts */
-    compact?: boolean
+    compact?: boolean;
 }
 
-type State = "idle" | "loading" | "error"
+type State = "idle" | "loading" | "error";
 
-export const DM_HANDOFF_KEY = "zynon:pending_dm_thread"
+export const DM_HANDOFF_KEY = "zynon:pending_dm_thread";
 
-export default function MessageButton({ userId, label = "Message", className, compact = false }: MessageButtonProps) {
-    const router = useRouter()
-    const [state, setState] = useState<State>("idle")
+export default function MessageButton({
+    userId, label = "Message", className, compact = false
+}: MessageButtonProps) {
+    const router = useRouter();
+    const [state, setState] = useState<State>("idle");
 
     const handleMessage = async () => {
-        if (state === "loading") return
-        setState("loading")
+        if (state === "loading") return;
+        setState("loading");
         try {
-            const res = await createOrGetDMThread(userId)
-            const thread = res.data?.data
-            if (!thread?._id) throw new Error("No thread returned")
-            sessionStorage.setItem(DM_HANDOFF_KEY, thread._id)
-            router.push("/messages")
+            const res = await createOrGetDMThread(userId);
+            const thread = res.data?.data;
+            // Backend returns threadId (fixed shape) but may still return _id — handle both
+            const id = thread?.threadId ?? thread?._id;
+            if (!id) throw new Error("No thread id returned");
+            sessionStorage.setItem(DM_HANDOFF_KEY, id);
+            router.push("/messages");
         } catch (err) {
-            console.error("[MessageButton] Failed to create thread:", err)
-            setState("error")
-            setTimeout(() => setState("idle"), 2500)
+            console.error("[MessageButton] Failed to create thread:", err);
+            setState("error");
+            setTimeout(() => setState("idle"), 2500);
         }
-    }
+    };
 
-    const isError = state === "error"
-    const isLoading = state === "loading"
+    const isError   = state === "error";
+    const isLoading = state === "loading";
 
     if (compact) {
         return (
@@ -60,9 +64,11 @@ export default function MessageButton({ userId, label = "Message", className, co
                     ? <Loader2 size={15} className="animate-spin" />
                     : <MessageSquare size={15} strokeWidth={2} />
                 }
-                {isLoading && <span className="absolute inset-0 rounded-full animate-ping bg-black/10 dark:bg-white/10 pointer-events-none" />}
+                {isLoading && (
+                    <span className="absolute inset-0 rounded-full animate-ping bg-black/10 dark:bg-white/10 pointer-events-none" />
+                )}
             </button>
-        )
+        );
     }
 
     return (
@@ -84,13 +90,14 @@ export default function MessageButton({ userId, label = "Message", className, co
                 : <MessageSquare size={13} className="shrink-0" />
             }
             <span className="hidden xs:inline sm:inline">
-                {isLoading ? "Opening..." : isError ? "Try again" : label}
+                {isLoading ? "Opening…" : isError ? "Try again" : label}
             </span>
-            {/* On very small screens show just icon text fallback */}
             <span className="xs:hidden sm:hidden">
-                {isLoading ? "..." : isError ? "!" : label}
+                {isLoading ? "…" : isError ? "!" : label}
             </span>
-            {isLoading && <span className="absolute inset-0 rounded-full animate-ping bg-black/10 dark:bg-white/10 pointer-events-none" />}
+            {isLoading && (
+                <span className="absolute inset-0 rounded-full animate-ping bg-black/10 dark:bg-white/10 pointer-events-none" />
+            )}
         </button>
-    )
+    );
 }
