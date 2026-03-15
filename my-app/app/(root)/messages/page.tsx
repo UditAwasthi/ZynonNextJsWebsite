@@ -1,26 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MessageSquare } from "lucide-react";
+import { Edit } from "lucide-react";
 import InboxList from "../../../src/components/messaging/InboxList";
 import ChatThread from "../../../src/components/messaging/ChatThread";
 import { useUnread } from "../../../src/hooks/useUnread";
 import { getAccessToken, getCurrentUserId } from "../../../src/lib/auth";
 import { getInbox } from "../../../src/lib/api/chatApi";
 import { DM_HANDOFF_KEY } from "../../../src/components/messaging/MessageButton";
-
-interface Thread {
-    threadId: string;
-    type: "dm" | "group";
-    user: { _id: string; username: string } | null;
-    lastMessage: {
-        content?: string;
-        createdAt?: string;
-        senderId?: string;
-    } | null;
-    lastActivity: string;
-    unreadCount?: number;
-}
+import type { Thread } from "../../../src/components/messaging/InboxList";
 
 export default function DirectPage() {
     const [selectedThread, setSelectedThread] = useState<Thread | null>(null);
@@ -32,43 +20,28 @@ export default function DirectPage() {
         setCurrentUserId(getCurrentUserId());
     }, []);
 
-    // On mount, check if MessageButton left a pending thread to open
+    // Open thread left by MessageButton handoff
     useEffect(() => {
         if (!token) return;
-
         const pendingId = sessionStorage.getItem(DM_HANDOFF_KEY);
         if (!pendingId) return;
-
-        // Clear immediately so a refresh doesn't re-open it
         sessionStorage.removeItem(DM_HANDOFF_KEY);
 
-        const resolveThread = async () => {
-            try {
-                const res = await getInbox();
+        getInbox()
+            .then(res => {
                 const threads: Thread[] = res.data?.data ?? [];
-                // Inbox threads use threadId which equals the thread _id
-                const match = threads.find((t) => t.threadId === pendingId);
-                if (match) {
-                    setSelectedThread(match);
-                } else {
-                    // Thread exists but not in inbox yet (brand new) — use shell
-                    setSelectedThread({
-                        threadId: pendingId,
-                        type: "dm",
-                        user: null,
-                        lastMessage: null,
-                        lastActivity: new Date().toISOString(),
-                    });
-                }
-            } catch {
-                // Non-fatal — user can pick from inbox manually
-            }
-        };
-
-        resolveThread();
+                const match = threads.find(t => t.threadId === pendingId);
+                setSelectedThread(match ?? {
+                    threadId: pendingId,
+                    type: "dm",
+                    user: null,
+                    lastMessage: null,
+                    lastActivity: new Date().toISOString(),
+                });
+            })
+            .catch(() => {});
     }, [token]);
 
-    // ✅ hooks before any early return
     const { unreadMap, clearUnread } = useUnread(token);
 
     if (!token || !currentUserId) return null;
@@ -79,12 +52,22 @@ export default function DirectPage() {
     };
 
     return (
-        <div className="flex h-screen bg-white dark:bg-black overflow-hidden">
-            {/* Sidebar */}
+        // Fills the viewport space left by the Sidebar's fixed bars.
+        // On mobile: 100dvh minus top bar (56px) and bottom bar (64px) + safe-area insets.
+        // On desktop (md+): fill whatever the layout gives (h-screen from parent).
+        <div
+            className="flex bg-white dark:bg-black overflow-hidden
+                        h-[calc(100dvh-56px-64px-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))]
+                        md:h-screen"
+        >
+            {/* ── Inbox panel ─────────────────────────────────────────────── */}
             <div
-                className={`w-full md:w-[350px] lg:w-[400px] border-r border-zinc-300 dark:border-zinc-800 flex-shrink-0 transition-all ${
-                    selectedThread ? "hidden md:flex" : "flex"
-                }`}
+                className={`
+                    flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800
+                    flex flex-col
+                    w-full md:w-[397px]
+                    ${selectedThread ? "hidden md:flex" : "flex"}
+                `}
             >
                 <InboxList
                     onSelect={handleSelect}
@@ -95,12 +78,8 @@ export default function DirectPage() {
                 />
             </div>
 
-            {/* Chat Panel */}
-            <div
-                className={`flex-1 flex flex-col transition-all ${
-                    !selectedThread ? "hidden md:flex" : "flex"
-                }`}
-            >
+            {/* ── Chat / empty state ───────────────────────────────────────── */}
+            <div className={`flex-1 flex flex-col min-w-0 ${!selectedThread ? "hidden md:flex" : "flex"}`}>
                 {selectedThread ? (
                     <ChatThread
                         thread={selectedThread}
@@ -109,14 +88,23 @@ export default function DirectPage() {
                         token={token}
                     />
                 ) : (
-                    <div className="flex flex-col items-center justify-center h-full space-y-4">
-                        <div className="p-5 border-2 border-black dark:border-white rounded-full">
-                            <MessageSquare size={48} />
+                    // Instagram's empty state: camera icon outline + "Your messages" text
+                    <div className="flex flex-col items-center justify-center h-full gap-4 select-none">
+                        <div className="w-[76px] h-[76px] rounded-full border-[2.5px] border-black dark:border-white flex items-center justify-center">
+                            <Edit size={32} strokeWidth={1.5} className="text-black dark:text-white" />
                         </div>
-                        <h2 className="text-xl font-medium">Your Messages</h2>
-                        <p className="text-zinc-500 text-sm text-center max-w-xs">
-                            Select a conversation from the left to start messaging.
-                        </p>
+                        <div className="text-center">
+                            <p className="text-xl font-semibold text-black dark:text-white mb-1">Your messages</p>
+                            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                                Send private photos and messages to a friend or group.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => {/* could open new message modal */}}
+                            className="mt-1 px-4 py-1.5 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                        >
+                            Send message
+                        </button>
                     </div>
                 )}
             </div>

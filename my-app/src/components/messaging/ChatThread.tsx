@@ -417,87 +417,106 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
     const headerName = isGroup ? thread.name ?? "Group" : thread.user?.username ?? "User";
     const headerAvatar = isGroup ? thread.avatar : thread.user?.profilePicture;
 
-    return (
-        <div className="flex flex-col h-full bg-[#f8f9fb] dark:bg-[#0a0a0c] transition-colors duration-700">
+   return (
+        <div
+            className="relative flex flex-col w-full bg-white/30 dark:bg-[#050505]/40 backdrop-blur-3xl transition-colors duration-700 overflow-hidden
+                        h-[calc(100dvh-56px-64px-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))]
+                        md:h-full"
+        >
+            {/* Ambient Glass Depth (Material You style blobs) */}
+            <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-blue-500/10 dark:bg-blue-600/10 rounded-full blur-[100px] pointer-events-none z-[-1]" />
+            <div className="absolute bottom-[20%] right-[-10%] w-80 h-80 bg-purple-500/10 dark:bg-purple-600/10 rounded-full blur-[120px] pointer-events-none z-[-1]" />
+
             <style>{`
                 @keyframes searchSlideDown {
-                    from { opacity: 0; transform: translateY(-8px); }
+                    from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+                    to   { opacity: 1; transform: translateY(0) scale(1); }
+                }
+                .search-bar-in { animation: searchSlideDown 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+                
+                @keyframes messageSlideUp {
+                    from { opacity: 0; transform: translateY(16px); }
                     to   { opacity: 1; transform: translateY(0); }
                 }
-                .search-bar-in { animation: searchSlideDown 0.2s ease both; }
-                @keyframes searchHighlight {
-                    0%   { background: rgba(59,130,246,0.25); }
-                    100% { background: transparent; }
+                .msg-enter { animation: messageSlideUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+                /* Android 14+ Pill Scrollbar */
+                .scrollbar-aesthetic::-webkit-scrollbar { width: 4px; }
+                .scrollbar-aesthetic::-webkit-scrollbar-track { background: transparent; }
+                .scrollbar-aesthetic::-webkit-scrollbar-thumb { 
+                    background: rgba(156, 163, 175, 0.3); 
+                    border-radius: 10px; 
                 }
-                .search-highlight { animation: searchHighlight 1.5s ease forwards; border-radius: 12px; }
+                .dark .scrollbar-aesthetic::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); }
             `}</style>
 
-            {/* Header */}
-            <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/70 dark:bg-[#121215]/80 border-b border-zinc-200/50 dark:border-zinc-800/50 shadow-sm transition-all">
-                <div className="px-4 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+            {/* Header - Glassmorphic */}
+            <header className="sticky top-0 z-30 backdrop-blur-2xl bg-white/40 dark:bg-[#0a0a0c]/40 border-b border-white/30 dark:border-white/5 shadow-[0_4px_30px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_30px_rgba(0,0,0,0.2)] transition-all">
+                <div className="px-3 py-3 md:py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3 md:gap-4">
                         <button
                             onClick={onBack}
-                            className="md:hidden group p-2 rounded-full hover:bg-white dark:hover:bg-zinc-800 hover:shadow-md transition-all active:scale-90"
+                            className="md:hidden group p-2.5 rounded-full bg-white/20 dark:bg-white/5 hover:bg-white/50 dark:hover:bg-white/10 transition-all active:scale-90"
                         >
-                            <ArrowLeft size={22} className="text-zinc-600 dark:text-zinc-300 group-hover:-translate-x-0.5 transition-transform" />
+                            <ArrowLeft size={22} className="text-zinc-700 dark:text-zinc-200 group-hover:-translate-x-0.5 transition-transform" />
                         </button>
 
                         <div className="relative group cursor-pointer">
                             <Avatar
                                 src={headerAvatar}
                                 name={headerName}
-                                size={44}
+                                size={46}
                                 isGroup={isGroup}
-                                className="rounded-2xl shadow-sm group-hover:shadow-md transition-shadow"
+                                className="rounded-[20px] shadow-sm ring-1 ring-white/40 dark:ring-white/10 group-hover:scale-105 transition-all duration-300"
                             />
-                            {/* Only show online indicator for DMs, driven by socket */}
+                            {/* Seamless Android-style online dot */}
                             {!isGroup && (
-                                <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 border-2 border-white dark:border-[#121215] rounded-full transition-colors ${isOnline ? "bg-green-500" : "bg-zinc-300 dark:bg-zinc-600"}`} />
+                                <div className={`absolute -bottom-1 -right-1 w-4 h-4 border-[3px] border-[#f8f9fb] dark:border-[#0a0a0c] rounded-full transition-colors ${isOnline ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]" : "bg-zinc-300 dark:bg-zinc-600"}`} />
                             )}
                         </div>
 
-                        <div className="flex flex-col">
+                        <div className="flex flex-col justify-center">
                             {!isGroup && thread.user?.username ? (
                                 <Link
                                     href={`/profile/${thread.user.username}`}
-                                    className="font-bold text-[17px] text-zinc-900 dark:text-zinc-100 tracking-tight leading-none hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                                    className="font-bold text-[18px] text-zinc-900 dark:text-zinc-50 tracking-tight leading-tight hover:text-blue-500 dark:hover:text-blue-400 transition-colors drop-shadow-sm"
                                 >
                                     {headerName}
                                 </Link>
                             ) : (
-                                <h2 className="font-bold text-[17px] text-zinc-900 dark:text-zinc-100 tracking-tight leading-none">
+                                <h2 className="font-bold text-[18px] text-zinc-900 dark:text-zinc-50 tracking-tight leading-tight drop-shadow-sm">
                                     {headerName}
                                 </h2>
                             )}
-                            <div className="flex items-center gap-1.5 mt-1 h-4">
+                            
+                            <div className="flex items-center gap-1.5 h-4 mt-0.5">
                                 {isTyping ? (
-                                    <div className="flex items-center gap-1">
-                                        <span className="flex gap-1">
+                                    <div className="flex items-center gap-1.5 bg-blue-500/10 dark:bg-blue-500/20 px-2 py-0.5 rounded-full">
+                                        <span className="flex gap-0.5">
                                             {[0, 150, 300].map(d => (
-                                                <span key={d} className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: `${d}ms` }} />
+                                                <span key={d} className="w-1 h-1 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
                                             ))}
                                         </span>
-                                        <span className="text-[11px] font-bold text-blue-500 uppercase tracking-widest italic">
+                                        <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">
                                             {typingLabel}
                                         </span>
                                     </div>
                                 ) : (
-                                    <span className="text-[12px] font-medium text-zinc-400">
-                                        {isGroup ? "Group" : isOnline ? "Active now" : "Offline"}
+                                    <span className="text-[12px] font-medium text-zinc-500 dark:text-zinc-400 tracking-wide">
+                                        {isGroup ? "Group circle" : isOnline ? "Active right now" : "Offline"}
                                     </span>
                                 )}
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                         <button
                             onClick={showSearch ? closeSearch : openSearch}
-                            className={`p-2.5 rounded-xl transition-all active:scale-95 ${
+                            className={`p-3 rounded-2xl transition-all duration-300 active:scale-90 ${
                                 showSearch
-                                    ? "bg-blue-500 text-white"
-                                    : "text-zinc-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-800 hover:text-blue-500"
+                                    ? "bg-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.4)]"
+                                    : "bg-white/30 dark:bg-white/5 text-zinc-600 dark:text-zinc-300 hover:bg-white/60 dark:hover:bg-white/10"
                             }`}
                         >
                             <Search size={20} />
@@ -506,22 +525,22 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                         {isGroup && (
                             <button
                                 onClick={() => setShowAddMember(true)}
-                                className="p-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-800 hover:text-blue-500 transition-all active:scale-95"
+                                className="p-3 rounded-2xl bg-white/30 dark:bg-white/5 text-zinc-600 dark:text-zinc-300 hover:bg-white/60 dark:hover:bg-white/10 transition-all active:scale-90"
                             >
                                 <Users size={20} />
                             </button>
                         )}
-                        <button className="p-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-800 transition-all active:scale-95">
+                        <button className="hidden md:flex p-3 rounded-2xl bg-white/30 dark:bg-white/5 text-zinc-600 dark:text-zinc-300 hover:bg-white/60 dark:hover:bg-white/10 transition-all active:scale-90">
                             <Info size={20} />
                         </button>
                     </div>
                 </div>
 
-                {/* Search bar */}
+                {/* Search bar - Floating Dropdown */}
                 {showSearch && (
-                    <div className="search-bar-in px-4 pb-3 flex items-center gap-2">
-                        <div className="flex-1 flex items-center gap-2 bg-zinc-100 dark:bg-zinc-900 rounded-2xl px-4 py-2.5 border border-zinc-200/50 dark:border-zinc-800">
-                            <Search size={15} className="text-zinc-400 shrink-0" />
+                    <div className="search-bar-in px-4 pb-4 flex items-center gap-2">
+                        <div className="flex-1 flex items-center gap-3 bg-white/50 dark:bg-[#121215]/80 backdrop-blur-md rounded-[20px] px-4 py-3 ring-1 ring-white/50 dark:ring-white/10 shadow-inner">
+                            <Search size={16} className="text-zinc-400 shrink-0" />
                             <input
                                 ref={searchInputRef}
                                 type="text"
@@ -531,65 +550,70 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                     if (e.key === "Enter") goToResult(searchIndex + 1);
                                     if (e.key === "Escape") closeSearch();
                                 }}
-                                placeholder="Search in conversation…"
-                                className="flex-1 bg-transparent text-[14px] outline-none dark:text-white placeholder-zinc-400"
+                                placeholder="Search in circle…"
+                                className="flex-1 bg-transparent text-[15px] font-medium outline-none text-zinc-900 dark:text-white placeholder-zinc-400/80"
                             />
                             {searchQuery && (
-                                <span className="text-[11px] font-bold text-zinc-400 shrink-0">
+                                <span className="text-[11px] font-bold text-zinc-400 bg-white/40 dark:bg-white/10 px-2 py-0.5 rounded-full shrink-0">
                                     {searchResults.length > 0 ? `${searchIndex + 1}/${searchResults.length}` : "0"}
                                 </span>
                             )}
                         </div>
-                        <button
-                            onClick={() => goToResult(searchIndex - 1)}
-                            disabled={!searchResults.length || searchIndex === 0}
-                            className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 text-zinc-500 disabled:opacity-30 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all active:scale-90"
-                        >
-                            <ChevronUp size={16} />
-                        </button>
-                        <button
-                            onClick={() => goToResult(searchIndex + 1)}
-                            disabled={!searchResults.length || searchIndex === searchResults.length - 1}
-                            className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 text-zinc-500 disabled:opacity-30 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all active:scale-90"
-                        >
-                            <ChevronDown size={16} />
-                        </button>
+                        <div className="flex gap-1.5">
+                            <button
+                                onClick={() => goToResult(searchIndex - 1)}
+                                disabled={!searchResults.length || searchIndex === 0}
+                                className="p-3 rounded-[18px] bg-white/40 dark:bg-white/10 text-zinc-700 dark:text-zinc-200 disabled:opacity-30 hover:bg-white/70 dark:hover:bg-white/20 transition-all active:scale-90"
+                            >
+                                <ChevronUp size={18} />
+                            </button>
+                            <button
+                                onClick={() => goToResult(searchIndex + 1)}
+                                disabled={!searchResults.length || searchIndex === searchResults.length - 1}
+                                className="p-3 rounded-[18px] bg-white/40 dark:bg-white/10 text-zinc-700 dark:text-zinc-200 disabled:opacity-30 hover:bg-white/70 dark:hover:bg-white/20 transition-all active:scale-90"
+                            >
+                                <ChevronDown size={18} />
+                            </button>
+                        </div>
                     </div>
                 )}
             </header>
 
-            {/* Messages */}
+            {/* Messages Area */}
             <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className="flex-1 overflow-y-auto overscroll-contain px-4 lg:px-8 space-y-6 py-6"
+                className="flex-1 overflow-y-auto overscroll-contain px-3 lg:px-8 space-y-6 py-6 scrollbar-aesthetic z-10"
             >
-                {/* Load more indicator */}
                 {loadingMore && (
-                    <div className="flex justify-center py-2">
-                        <div className="w-5 h-5 border-2 border-zinc-200 dark:border-zinc-700 border-t-blue-500 rounded-full animate-spin" />
+                    <div className="flex justify-center py-2 animate-in fade-in zoom-in duration-300">
+                        <div className="w-6 h-6 border-[3px] border-zinc-200/50 dark:border-zinc-700/50 border-t-blue-500 rounded-full animate-spin drop-shadow-md" />
                     </div>
                 )}
 
                 {loadingHistory ? (
-                    <div className="flex flex-col items-center justify-center h-full gap-4">
-                        <div className="w-8 h-8 border-[3px] border-zinc-200 dark:border-zinc-800 border-t-blue-500 rounded-full animate-spin" />
-                        <p className="text-sm font-medium text-zinc-400 animate-pulse">Loading messages…</p>
+                    <div className="flex flex-col items-center justify-center h-full gap-5">
+                        <div className="relative">
+                            <div className="w-10 h-10 border-[3px] border-white/20 dark:border-white/10 border-t-blue-500 rounded-full animate-spin" />
+                            <div className="absolute inset-0 bg-blue-500/20 blur-md rounded-full animate-pulse" />
+                        </div>
+                        <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 animate-pulse tracking-wide">Syncing circle…</p>
                     </div>
                 ) : messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center py-20 animate-in fade-in zoom-in duration-700">
-                        <div className="relative mb-6">
-                            <Avatar src={headerAvatar} name={headerName} size={90} isGroup={isGroup} className="rounded-[32px] shadow-2xl" />
-                            <div className="absolute -bottom-2 -right-2 bg-white dark:bg-zinc-900 p-2 rounded-full shadow-lg">👋</div>
+                    <div className="flex flex-col items-center justify-center h-full text-center py-20 animate-in fade-in zoom-in slide-in-from-bottom-8 duration-1000">
+                        <div className="relative mb-6 group">
+                            <Avatar src={headerAvatar} name={headerName} size={100} isGroup={isGroup} className="rounded-[40px] shadow-[0_20px_40px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_40px_rgba(0,0,0,0.4)] group-hover:scale-105 transition-transform duration-500" />
+                            <div className="absolute -bottom-3 -right-3 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xl p-3 rounded-full text-xl shadow-xl ring-1 ring-white/50 dark:ring-white/10 animate-bounce delay-300">👋</div>
                         </div>
-                        <h3 className="text-xl font-bold text-zinc-800 dark:text-zinc-200">Your conversation starts here</h3>
-                        <p className="text-zinc-400 text-sm mt-2 max-w-[200px]">Send a message to break the ice with {headerName}</p>
+                        <h3 className="text-2xl font-bold text-zinc-800 dark:text-zinc-100 tracking-tight">The start of something new</h3>
+                        <p className="text-zinc-500 dark:text-zinc-400 text-[15px] mt-2 font-medium max-w-[220px]">Say hello to {headerName} and break the ice.</p>
                     </div>
                 ) : (
                     grouped.map(({ date, msgs }) => (
                         <div key={date} className="space-y-4">
-                            <div className="sticky top-2 z-10 flex justify-center py-4">
-                                <span className="px-4 py-1.5 rounded-full bg-white/50 dark:bg-zinc-900/50 backdrop-blur-md text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-tighter border border-zinc-200/50 dark:border-zinc-800/50 shadow-sm">
+                            {/* Glass Date Badge */}
+                            <div className="sticky top-2 z-10 flex justify-center py-4 pointer-events-none">
+                                <span className="px-5 py-2 rounded-[20px] bg-white/40 dark:bg-[#18181b]/60 backdrop-blur-xl text-[11px] font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-widest ring-1 ring-white/50 dark:ring-white/10 shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
                                     {formatDate(date)}
                                 </span>
                             </div>
@@ -603,8 +627,9 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                                         <div
                                             key={msg._id}
                                             ref={el => { msgRefs.current[msg._id] = el; }}
-                                            className={`${!sameAsPrev && i > 0 ? "mt-6" : "mt-0.5"} transition-all duration-500 animate-in slide-in-from-bottom-2`}
+                                            className={`msg-enter ${!sameAsPrev && i > 0 ? "mt-6" : "mt-0.5"}`}
                                         >
+                                            {/* Note: Ensure MessageBubble component inside supports soft border radius and translucent backgrounds for max effect */}
                                             <MessageBubble
                                                 message={msg}
                                                 isMine={isMine}
@@ -626,33 +651,33 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                         </div>
                     ))
                 )}
-                <div ref={bottomRef} className="h-4" />
+                <div ref={bottomRef} className="h-6" />
             </div>
 
-            {/* Input Dock */}
-            <div className="px-4 pb-6 pt-2 bg-gradient-to-t from-[#f8f9fb] via-[#f8f9fb] dark:from-[#0a0a0c] dark:via-[#0a0a0c] to-transparent">
-                <div className="max-w-4xl mx-auto">
+            {/* Floating Glass Input Dock */}
+            <div className="px-3 pb-4 md:pb-8 pt-2 relative z-20 before:absolute before:inset-0 before:bg-gradient-to-t before:from-white/60 dark:before:from-[#0a0a0c]/80 before:to-transparent before:backdrop-blur-sm before:z-[-1]">
+                <div className="max-w-4xl mx-auto relative">
 
-                    {/* Reply / Edit Banner */}
+                    {/* Reply / Edit Stacked Glass Banner */}
                     {(replyTo || editingMsg) && (
-                        <div className="flex items-center gap-3 mx-2 mb-3 px-4 py-3 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md rounded-[20px] border border-zinc-200/50 dark:border-zinc-800/50 animate-in slide-in-from-bottom-4 duration-300 shadow-xl">
-                            <div className="w-1 h-8 bg-blue-500 rounded-full" />
+                        <div className="absolute bottom-full left-2 right-2 mb-2 px-5 py-3.5 bg-white/60 dark:bg-[#18181b]/80 backdrop-blur-2xl rounded-[24px] ring-1 ring-white/60 dark:ring-white/10 animate-in slide-in-from-bottom-4 duration-300 shadow-[0_-10px_30px_rgba(0,0,0,0.05)] flex items-center gap-4">
+                            <div className="w-1.5 h-9 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
                             <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest leading-none mb-1">
-                                    {editingMsg ? "Editing" : `Replying to ${replyTo?.senderId.username}`}
+                                <p className="text-[11px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest leading-none mb-1.5">
+                                    {editingMsg ? "Editing Message" : `Replying to ${replyTo?.senderId.username}`}
                                 </p>
-                                <p className="text-sm text-zinc-600 dark:text-zinc-400 truncate italic">
-                                    "{editingMsg?.content || replyTo?.content || "Attachment"}"
+                                <p className="text-[13px] font-medium text-zinc-700 dark:text-zinc-300 truncate">
+                                    {editingMsg?.content || replyTo?.content || "Attachment"}
                                 </p>
                             </div>
-                            <button onClick={cancelEditOrReply} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
-                                <X size={16} className="text-zinc-400" />
+                            <button onClick={cancelEditOrReply} className="p-2.5 hover:bg-white/50 dark:hover:bg-white/10 rounded-full transition-colors active:scale-90">
+                                <X size={18} className="text-zinc-500" />
                             </button>
                         </div>
                     )}
 
-                    {/* Input Bar */}
-                    <div className="relative flex items-end gap-2 p-2 bg-white dark:bg-[#121215] rounded-[30px] border border-zinc-200/50 dark:border-zinc-800/50 shadow-[0_10px_40px_rgba(0,0,0,0.04)] dark:shadow-[0_10px_40px_rgba(0,0,0,0.2)]">
+                    {/* Main Input Pill */}
+                    <div className="relative flex items-end gap-2 p-1.5 bg-white/70 dark:bg-[#18181b]/70 backdrop-blur-2xl rounded-[32px] ring-1 ring-white/60 dark:ring-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.06)] dark:shadow-[0_10px_40px_rgba(0,0,0,0.3)]">
                         <input
                             ref={fileInputRef as any}
                             type="file"
@@ -662,9 +687,9 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                         />
                         <button
                             onClick={() => (fileInputRef.current as any)?.click()}
-                            className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-500 transition-all active:scale-90"
+                            className="w-12 h-12 shrink-0 flex items-center justify-center rounded-full hover:bg-white/60 dark:hover:bg-white/10 text-zinc-500 dark:text-zinc-400 transition-all active:scale-90 mb-0.5 ml-0.5"
                         >
-                            <ImageIcon size={22} className="opacity-80" />
+                            <ImageIcon size={22} className="opacity-90" />
                         </button>
 
                         <textarea
@@ -672,32 +697,34 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                             value={input}
                             onChange={handleInputChange}
                             onKeyDown={handleKeyDown}
-                            placeholder="Write your message…"
-                            className="flex-1 bg-transparent py-3 px-2 text-[15px] dark:text-white outline-none placeholder-zinc-400 leading-relaxed resize-none overflow-hidden"
-                            style={{ height: "46px", maxHeight: "180px" }}
+                            placeholder="Message…"
+                            className="flex-1 bg-transparent py-3.5 px-2 text-[16px] font-medium dark:text-white outline-none placeholder-zinc-500/80 leading-relaxed resize-none overflow-hidden scrollbar-none"
+                            style={{ height: "50px", maxHeight: "150px" }}
                         />
 
-                        {/* Send button enabled when editing too (even with same text) */}
                         <button
                             onClick={handleSend}
                             disabled={!input.trim() && !editingMsg}
-                            className={`w-11 h-11 flex items-center justify-center rounded-full transition-all duration-300 ${
+                            className={`w-12 h-12 shrink-0 flex items-center justify-center rounded-full transition-all duration-300 mb-0.5 mr-0.5 ${
                                 (input.trim() || editingMsg)
-                                    ? "bg-blue-600 text-white shadow-[0_4px_15px_rgba(37,99,235,0.4)] hover:scale-105 active:scale-95"
-                                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
+                                    ? "bg-blue-600 dark:bg-blue-500 text-white shadow-[0_4px_20px_rgba(37,99,235,0.4)] hover:scale-105 active:scale-95"
+                                    : "bg-white/40 dark:bg-white/5 text-zinc-400 cursor-not-allowed"
                             }`}
                         >
-                            <Send size={18} className={(input.trim() || editingMsg) ? "translate-x-0.5 -translate-y-0.5" : ""} />
+                            <Send size={20} className={(input.trim() || editingMsg) ? "translate-x-0.5 -translate-y-0.5" : ""} />
                         </button>
                     </div>
 
+                    {/* Glowing Progress Bar */}
                     {uploading && (
-                        <div className="mt-3 px-4 animate-in fade-in duration-500">
-                            <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-900 rounded-full overflow-hidden">
+                        <div className="absolute top-full left-6 right-6 mt-3 animate-in fade-in duration-500">
+                            <div className="h-1.5 w-full bg-white/30 dark:bg-zinc-800/50 backdrop-blur-md rounded-full overflow-hidden ring-1 ring-white/20 dark:ring-white/5">
                                 <div
-                                    className="h-full bg-blue-500 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(59,130,246,0.5)]"
+                                    className="h-full bg-blue-500 transition-all duration-500 ease-out shadow-[0_0_12px_rgba(59,130,246,0.8)] rounded-full relative"
                                     style={{ width: `${uploadProgress}%` }}
-                                />
+                                >
+                                    <div className="absolute top-0 right-0 bottom-0 w-10 bg-gradient-to-r from-transparent to-white/50 blur-[2px]" />
+                                </div>
                             </div>
                         </div>
                     )}
