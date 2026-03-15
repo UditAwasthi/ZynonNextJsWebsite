@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useState, useRef, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { getUserPosts } from "../../lib/api/postApi"
 import { Heart, MessageCircle, Copy, Eye } from "lucide-react"
-import PostModal from "./PostModal"
 import { cache, TTL } from "../../lib/cache"
 
 interface Post {
@@ -360,12 +360,12 @@ const LoadMoreDots = () => (
 
 /* ═══ MAIN ═══════════════════════════════════════════════════════ */
 export default function PostGrid({ userId }: PostGridProps) {
+    const router = useRouter()
     const [posts, setPosts] = useState<Post[]>([])
     const [loading, setLoading] = useState(true)
     const [loadingMore, setLoadingMore] = useState(false)
     const [cursor, setCursor] = useState<string | undefined>()
     const [hasMore, setHasMore] = useState(true)
-    const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
     const observerRef = useRef<IntersectionObserver | null>(null)
     const sentinelRef = useRef<HTMLDivElement | null>(null)
 
@@ -491,7 +491,7 @@ export default function PostGrid({ userId }: PostGridProps) {
                             <BentoGrid
                                 posts={posts}
                                 loadingMore={loadingMore}
-                                onTileClick={setSelectedPostId}
+                                onTileClick={(id) => router.push(`/posts/${id}`)}
                             />
                         </div>
                     )}
@@ -508,18 +508,6 @@ export default function PostGrid({ userId }: PostGridProps) {
                 <div ref={sentinelRef} className="h-4 w-full" aria-hidden />
             </div>
 
-            {/* Post Detail Overlay */}
-            {selectedPostId && (
-                <PostModal
-                    postId={selectedPostId}
-                    onClose={() => setSelectedPostId(null)}
-                    onDelete={(id) => {
-                        setPosts(prev => prev.filter(p => p._id !== id))
-                        setSelectedPostId(null)
-                        cache.invalidatePrefix(`posts:${userId}`)
-                    }}
-                />
-            )}
         </>
     )
 }

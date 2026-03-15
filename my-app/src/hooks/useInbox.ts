@@ -16,7 +16,7 @@ import type { Thread } from "../components/messaging/InboxList";
 const _picCache    = new Map<string, string | null>();
 const _picInflight = new Map<string, Promise<string | null>>();
 
-async function fetchProfilePic(username: string): Promise<string | null> {
+export async function fetchProfilePic(username: string): Promise<string | null> {
     if (_picCache.has(username)) return _picCache.get(username)!;
     if (_picInflight.has(username)) return _picInflight.get(username)!;
 
@@ -47,7 +47,7 @@ async function fetchProfilePic(username: string): Promise<string | null> {
     return promise;
 }
 
-async function enrichThreadsWithProfilePics(threads: Thread[]): Promise<Thread[]> {
+export async function enrichThreadsWithProfilePics(threads: Thread[]): Promise<Thread[]> {
     // Only fetch for DM threads whose user doesn't already have a pic
     const toFetch = threads.filter(
         t => t.type === "dm" && t.user && !_picCache.has(t.user.username)

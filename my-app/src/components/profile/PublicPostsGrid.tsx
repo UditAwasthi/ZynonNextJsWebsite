@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useState, useRef, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { Heart, MessageCircle, Copy } from "lucide-react"
-import PostModal from "./PostModal"
 
 interface PostGridItem {
     _id: string
@@ -436,12 +436,12 @@ const LoadMoreDots = () => (
 )
 
 export default function PublicPostsGrid({ userId, isPrivate = false, username }: PublicPostsGridProps) {
+    const router = useRouter()
     const [posts,       setPosts]       = useState<PostGridItem[]>([])
     const [cursor,      setCursor]      = useState<string | null>(null)
     const [hasMore,     setHasMore]     = useState(false)
     const [loading,     setLoading]     = useState(true)
     const [loadingMore, setLoadingMore] = useState(false)
-    const [openPostId,  setOpenPostId]  = useState<string | null>(null)
     const sentinelRef = useRef<HTMLDivElement>(null)
 
     const fetchPage = useCallback(async (cur?: string) => {
@@ -486,10 +486,6 @@ export default function PublicPostsGrid({ userId, isPrivate = false, username }:
         <>
             <style>{GCSS}</style>
 
-            {openPostId && (
-                <PostModal postId={openPostId} onClose={() => setOpenPostId(null)} />
-            )}
-
             {/* ── Outer container ── */}
             <div className="relative rounded-[40px] p-4 md:p-6 overflow-hidden bg-white dark:bg-[#0D0D0D] border border-zinc-200 dark:border-zinc-800">
 
@@ -509,7 +505,7 @@ export default function PublicPostsGrid({ userId, isPrivate = false, username }:
                     {!isPrivate && loading && <><SkeletonGrid /><NothingLoader /></>}
                     {!isPrivate && !loading && posts.length === 0 && <EmptyState />}
                     {!isPrivate && posts.length > 0 && (
-                        <BentoGrid posts={posts} loadingMore={loadingMore} onTileClick={setOpenPostId} />
+                        <BentoGrid posts={posts} loadingMore={loadingMore} onTileClick={(id) => router.push(`/posts/${id}`)} />
                     )}
                     {!isPrivate && loadingMore && <LoadMoreDots />}
                 </div>

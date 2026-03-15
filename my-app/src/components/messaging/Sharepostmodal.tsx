@@ -110,7 +110,7 @@ export default function SharePostModal({ postId, postPreview, onClose }: Props) 
         : [];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
+        <div className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
             <div className="bg-white dark:bg-zinc-950 rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl border-t sm:border border-zinc-100 dark:border-zinc-800 overflow-hidden">
                 {/* Handle */}
                 <div className="flex justify-center pt-3 pb-1 sm:hidden">

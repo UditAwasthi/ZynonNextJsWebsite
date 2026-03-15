@@ -16,7 +16,12 @@ export interface Message {
     type: "text" | "media" | "post" | "system" | "forward";
     content?: string;
     attachments?: Attachment[];
-    postId?: { _id: string; caption?: string; media?: { url: string; type: string }[] };
+    postId?: {
+        _id: string;
+        caption?: string;
+        media?: { url: string; type: string }[];
+        author?: { _id: string; username: string; profilePicture?: string };
+    } | string;
     replyTo?: { _id: string; content?: string; senderId: { _id: string; username: string } };
     forwardedFrom?: { messageId: string; senderId: string };
     reactions: { userId: string; emoji: string }[];

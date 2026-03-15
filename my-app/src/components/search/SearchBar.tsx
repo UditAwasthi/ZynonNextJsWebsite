@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react"
 import { useRouter } from "next/navigation"
 import { Search, X, Loader2, ArrowRight, User } from "lucide-react"
-import { fetchSuggestions, SearchUser } from "../../lib/api/search"
+import { fetchSuggestions, fetchSearchResults, SearchUser } from "../../lib/api/search"
+import { enrichThreadsWithProfilePics } from "../../hooks/useInbox"
+import { cacheUsers } from "../../lib/userSearchCache"
 
 /* ─── DEBOUNCE HOOK ─── */
 function useDebounce<T>(value: T, delay: number): T {
@@ -198,7 +200,7 @@ export function SearchBar({ className = "" }: { className?: string }) {
     const containerRef = useRef<HTMLDivElement>(null)
     const debouncedQuery = useDebounce(query, 300)
 
-    /* Fetch suggestions */
+    /* Fetch suggestions — parallel: suggestions API + full search, enriched with profile pics */
     useEffect(() => {
         if (debouncedQuery.length < 2) {
             setSuggestions([])
@@ -207,16 +209,53 @@ export function SearchBar({ className = "" }: { className?: string }) {
         }
         let cancelled = false
         setLoading(true)
-        fetchSuggestions(debouncedQuery)
-            .then(data => {
-                if (!cancelled) {
-                    setSuggestions(data)
-                    setOpen(true)
-                    setActiveIndex(-1)
+
+        Promise.allSettled([
+            fetchSuggestions(debouncedQuery),
+            fetchSearchResults(debouncedQuery),
+        ]).then(async ([suggestRes, searchRes]) => {
+            if (cancelled) return
+
+            // Merge both result sets, deduplicate by _id
+            const seen = new Set<string>()
+            const merged: SearchUser[] = []
+            const addAll = (users: SearchUser[]) => {
+                for (const u of users) {
+                    if (!seen.has(u._id)) { seen.add(u._id); merged.push(u) }
                 }
+            }
+            if (suggestRes.status === "fulfilled") addAll(suggestRes.value)
+            if (searchRes.status === "fulfilled")  addAll(searchRes.value.users ?? [])
+
+            // Cache for UserSearchInput reuse
+            cacheUsers(merged)
+
+            // Enrich with profile pics using shared _picCache
+            const enriched = await enrichThreadsWithProfilePics(
+                merged.map(u => ({
+                    threadId: u._id,
+                    type: "dm" as const,
+                    user: { _id: u._id, username: u.username, profilePicture: u.profilePicture },
+                    lastMessage: null,
+                    lastActivity: "",
+                }))
+            )
+            const withPics = merged.map(u => {
+                const found = enriched.find(t => t.user?._id === u._id)
+                return found?.user?.profilePicture
+                    ? { ...u, profilePicture: found.user.profilePicture }
+                    : u
             })
-            .catch(() => { })
-            .finally(() => { if (!cancelled) setLoading(false) })
+
+            if (!cancelled) {
+                setSuggestions(withPics)
+                setOpen(true)
+                setActiveIndex(-1)
+            }
+        })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setLoading(false) })
+
         return () => { cancelled = true }
     }, [debouncedQuery])
 

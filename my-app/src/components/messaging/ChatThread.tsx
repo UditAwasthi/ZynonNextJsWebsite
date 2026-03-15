@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
     ArrowLeft, Info, Image as ImageIcon, Send, X,
-    Users, Search, ChevronUp, ChevronDown
+    Users, Search, ChevronUp, ChevronDown, Pin
 } from "lucide-react";
 import Link from "next/link";
 import { getSocket } from "../../lib/socket";
@@ -72,6 +72,11 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
     const loadMoreThrottleRef = useRef(false);
 
     const isGroup = thread.type === "group";
+
+    // Most recently pinned non-deleted message
+    const pinnedMessage = messages
+        .filter(m => m.pinnedBy && !m.isDeleted)
+        .at(-1) ?? null;
 
     // ── Derive isAdmin from thread participants ────────────────────────────────
     // The Thread type comes from the inbox and carries participants when the
@@ -578,6 +583,42 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                     </div>
                 )}
             </header>
+
+            {/* ── Pinned Message Banner ── */}
+            {pinnedMessage && (
+                <button
+                    onClick={() => scrollToMessage(pinnedMessage._id)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-md border-b border-white/30 dark:border-white/5 hover:bg-white/80 dark:hover:bg-zinc-800/60 transition-all duration-200 z-20 group"
+                >
+                    {/* Left accent bar */}
+                    <div className="w-0.5 h-8 bg-blue-500 rounded-full shrink-0 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+
+                    <Pin size={13} className="text-blue-500 shrink-0 rotate-45" />
+
+                    <div className="flex-1 min-w-0 text-left">
+                        <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest leading-none mb-0.5">
+                            Pinned Message
+                        </p>
+                        <p className="text-[13px] font-medium text-zinc-700 dark:text-zinc-300 truncate leading-snug">
+                            {pinnedMessage.type === "post"
+                                ? "📎 Shared a post"
+                                : pinnedMessage.attachments?.length
+                                    ? "📎 Attachment"
+                                    : pinnedMessage.content || "Message"
+                            }
+                        </p>
+                    </div>
+
+                    <X
+                        size={15}
+                        className="text-zinc-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hover:text-zinc-600 dark:hover:text-zinc-200"
+                        onClick={async e => {
+                            e.stopPropagation();
+                            await pinMessage(pinnedMessage._id).catch(() => {});
+                        }}
+                    />
+                </button>
+            )}
 
             {/* Messages Area */}
             <div

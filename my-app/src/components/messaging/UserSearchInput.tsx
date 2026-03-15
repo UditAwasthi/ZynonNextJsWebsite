@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Search, X, Check } from "lucide-react";
 import { searchUsers } from "../../lib/userSearchCache";
 import { Avatar } from "./Avatar";
+import { enrichThreadsWithProfilePics } from "../../hooks/useInbox";
 import type { SearchUser } from "../../lib/api/search";
 
 interface Props {
@@ -31,8 +32,23 @@ export default function UserSearchInput({ selected, onToggle, placeholder = "Sea
         timer.current = setTimeout(async () => {
             try {
                 const users = await searchUsers(query);
-                // Filter out already-selected
-                setResults(users.filter(u => !selected.some(s => s._id === u._id)));
+                const filtered = users.filter(u => !selected.some(s => s._id === u._id));
+                // Enrich with profile pics using the shared cache
+                const enriched = await enrichThreadsWithProfilePics(
+                    filtered.map(u => ({
+                        threadId: u._id,
+                        type: "dm" as const,
+                        user: { _id: u._id, username: u.username, profilePicture: u.profilePicture },
+                        lastMessage: null,
+                        lastActivity: "",
+                    }))
+                );
+                setResults(filtered.map(u => {
+                    const found = enriched.find(t => t.user?._id === u._id);
+                    return found?.user?.profilePicture
+                        ? { ...u, profilePicture: found.user.profilePicture }
+                        : u;
+                }));
             } catch {
             } finally {
                 setLoading(false);

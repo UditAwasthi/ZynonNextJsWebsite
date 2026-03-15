@@ -11,6 +11,7 @@ import {
     getReplies, deleteComment, deletePost, editComment,
 } from "../../lib/api/postApi"
 import api from "../../lib/api/api"
+import SharePostModal from "../messaging/Sharepostmodal"
 
 interface PostAuthor { _id: string; username: string }
 interface PostProfile { profilePicture?: string; name?: string }
@@ -827,6 +828,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
     const [confirmDel, setConfirmDel] = useState(false)
     const [menuOpenCid, setMenuOpenCid] = useState<string | null>(null)
     const [toast, setToast] = useState<string | null>(null)
+    const [showShareModal, setShowShareModal] = useState(false)
 
     const inputRef = useRef<HTMLInputElement>(null)
 
@@ -1193,7 +1195,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                 )}
                             </button>
                             <button className="pm-tap" style={{ color: v("--pm-label") }}
-                                onClick={() => { navigator.clipboard?.writeText(window.location.href); showToast("Link copied") }}>
+                                onClick={() => setShowShareModal(true)}>
                                 <Share2 size={21} strokeWidth={1.75} />
                             </button>
                         </div>
@@ -1663,7 +1665,7 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                                         )}
                                     </button>
                                     <button className="pm-tap" style={{ color: v("--pm-label") }}
-                                        onClick={() => { navigator.clipboard?.writeText(window.location.href); showToast("Link copied") }}>
+                                        onClick={() => setShowShareModal(true)}>
                                         <Share2 size={21} strokeWidth={1.75} />
                                     </button>
                                 </div>
@@ -1752,6 +1754,17 @@ export default function PostModal({ postId, onClose, onDelete }: PostModalProps)
                     </div>
                 </div>
             </div>
+
+            {showShareModal && post && (
+                <SharePostModal
+                    postId={post.postId}
+                    postPreview={{
+                        imageUrl: post.media[0]?.url,
+                        caption: post.caption,
+                    }}
+                    onClose={() => setShowShareModal(false)}
+                />
+            )}
         </>
     )
 }
