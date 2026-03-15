@@ -1,336 +1,300 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Search, Plus, Loader2, ImageIcon, Film, Mic, MessageSquare } from "lucide-react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
+import { useEffect, useState, useRef } from "react";
+import { 
+    Search, 
+    Users, 
+    X, 
+    MessageSquarePlus, 
+    Camera, 
+    Video, 
+    Mic, 
+    FileText 
+} from "lucide-react";
 import { getInbox } from "../../lib/api/chatApi";
-import { getSocket } from "../../lib/socket";
-import api from "../../lib/api/api";
+import { cacheUsers } from "../../lib/userSearchCache";
+import { Avatar } from "./Avatar";
+import CreateGroupModal from "./CreateGroupModal";
 
-interface Thread {
-  threadId: string;
-  type: "dm" | "group";
-  user: { _id: string; username: string; profilePicture?: string } | null;
-  lastMessage: {
-    content?: string;
-    createdAt?: string;
-    senderId?: string;
-    mediaType?: "image" | "video" | "audio" | "file";
-  } | null;
-  lastActivity: string;
-  unreadCount?: number;
-}
-
-interface SocketMessage {
-  _id: string;
-  threadId: string;
-  senderId: { _id: string; username: string };
-  content?: string;
-  createdAt: string;
-  mediaType?: "image" | "video" | "audio" | "file";
-  type?: "text" | "media";
+export interface Thread {
+    threadId: string;
+    type: "dm" | "group";
+    user: { _id: string; username: string; profilePicture?: string } | null;
+    name?: string;
+    avatar?: string;
+    lastMessage: {
+        content?: string;
+        createdAt?: string;
+        senderId?: string;
+        mediaType?: string;
+    } | null;
+    lastActivity: string;
 }
 
 interface Props {
-  onSelect: (thread: Thread) => void;
-  activeId?: string;
-  currentUserId: string;
-  token: string;
-  unreadMap?: Record<string, number>;
-  onThreadOpen?: (threadId: string) => void;
+    onSelect: (thread: Thread) => void;
+    activeId?: string;
+    currentUserId: string;
+    token: string;
+    unreadMap: Record<string, number>;
 }
 
-const profilePicCache = new Map<string, string | null>();
+const _picCache: Record<string, string | null> = {};
 
-async function fetchProfilePic(username: string): Promise<string | null> {
-  if (profilePicCache.has(username)) return profilePicCache.get(username) ?? null;
-  try {
-    const { data } = await api.get(`/profile/${username}`);
-    const pic =
-      data?.data?.profilePicture ??
-      data?.data?.profile?.profilePicture ??
-      data?.profilePicture ??
-      null;
-    profilePicCache.set(username, pic);
-    return pic;
-  } catch {
-    profilePicCache.set(username, null);
-    return null;
-  }
+async function enrichThreadsWithProfilePics(threads: Thread[]): Promise<Thread[]> {
+    const toFetch = threads.filter(t => t.type === "dm" && t.user && !_picCache[t.user._id]);
+    await Promise.allSettled(
+        toFetch.map(async t => {
+            const username = t.user!.username;
+            try {
+                const { data } = await import("../../lib/api/api").then(m => m.default.get(`/profile/${username}`));
+                const pic = data?.data?.profilePicture ?? data?.data?.profile?.profilePicture ?? null;
+                _picCache[t.user!._id] = pic;
+            } catch {
+                _picCache[t.user!._id] = null;
+            }
+        })
+    );
+    return threads.map(t => {
+        if (t.type !== "dm" || !t.user) return t;
+        const pic = _picCache[t.user._id];
+        if (!pic) return t;
+        return { ...t, user: { ...t.user, profilePicture: pic } };
+    });
 }
 
-async function enrichThreadsWithPics(threads: Thread[]): Promise<Thread[]> {
-  const usernamesToFetch = threads
-    .filter(t => t.user?.username && !t.user.profilePicture && !profilePicCache.has(t.user.username))
-    .map(t => t.user!.username);
-  if (usernamesToFetch.length > 0) {
-    await Promise.allSettled([...new Set(usernamesToFetch)].map(u => fetchProfilePic(u)));
-  }
-  return threads.map(t => {
-    if (!t.user?.username) return t;
-    const pic = t.user.profilePicture ?? profilePicCache.get(t.user.username) ?? null;
-    return pic ? { ...t, user: { ...t.user, profilePicture: pic } } : t;
-  });
-}
+export default function InboxList({ onSelect, activeId, currentUserId, token, unreadMap }: Props) {
+    const [threads, setThreads] = useState<Thread[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [showGroupModal, setShowGroupModal] = useState(false);
 
-const getInitials = (username: string) => username.slice(0, 2).toUpperCase();
+    useEffect(() => { fetchInbox(); }, []);
 
-const getAvatarColor = (username: string) => {
-  const colors = ["#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#ef4444"];
-  let hash = 0;
-  for (let i = 0; i < username.length; i++) hash += username.charCodeAt(i);
-  return colors[hash % colors.length];
-};
-
-const formatTime = (iso?: string) => {
-  if (!iso) return "";
-  const date = new Date(iso);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  if (diff < 60000) return "now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d`;
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
-};
-
-function LastMessagePreview({ thread, isActive }: { thread: Thread; isActive: boolean }) {
-  const m = thread.lastMessage;
-  const base = `text-[13px] truncate ${isActive ? "text-zinc-300 dark:text-zinc-600" : "text-zinc-500 dark:text-zinc-400"}`;
-  if (!m) return <span className={base}>Start a conversation</span>;
-  if (m.mediaType === "image") return <span className={`${base} flex items-center gap-1`}><ImageIcon size={12} className="shrink-0" />Photo</span>;
-  if (m.mediaType === "video") return <span className={`${base} flex items-center gap-1`}><Film size={12} className="shrink-0" />Video</span>;
-  if (m.mediaType === "audio") return <span className={`${base} flex items-center gap-1`}><Mic size={12} className="shrink-0" />Audio</span>;
-  return <span className={base}>{m.content || "Start a conversation"}</span>;
-}
-
-export default function InboxList({ onSelect, activeId, currentUserId, token, unreadMap = {}, onThreadOpen }: Props) {
-  const router = useRouter();
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-
-  useEffect(() => {
     const fetchInbox = async () => {
-      try {
-        setLoading(true);
-        const res = await getInbox();
-        const raw: Thread[] = res.data?.data || [];
-        const enriched = await enrichThreadsWithPics(raw);
-        setThreads(enriched);
-      } catch {
-        setError("Failed to load conversations");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchInbox();
-  }, []);
+        try {
+            const res = await getInbox();
+            const data: Thread[] = res.data?.data ?? [];
+            const enriched = await enrichThreadsWithProfilePics(data);
+            setThreads(enriched);
 
-  useEffect(() => {
-    if (!token) return;
-    const socket = getSocket(token);
-    const handleNewMessage = (msg: SocketMessage) => {
-      const tid = typeof msg.threadId === "string" ? msg.threadId : (msg.threadId as any).toString();
-      setThreads((prev) => {
-        const idx = prev.findIndex((t) => t.threadId === tid);
-        if (idx === -1) return prev;
-        const updated: Thread = {
-          ...prev[idx],
-          lastMessage: { content: msg.content || "", createdAt: msg.createdAt, senderId: msg.senderId._id, mediaType: msg.mediaType },
-          lastActivity: msg.createdAt,
-        };
-        return [updated, ...prev.filter((_, i) => i !== idx)];
-      });
-    };
-    socket.on("new_message", handleNewMessage);
-    return () => { socket.off("new_message", handleNewMessage); };
-  }, [token]);
-
-  const handleProfileClick = useCallback((e: React.MouseEvent, username: string) => {
-    e.stopPropagation();
-    router.push(`/profile/${username}`);
-  }, [router]);
-
-  const filtered = threads.filter((t) =>
-    t.user?.username.toLowerCase().includes(search.toLowerCase())
-  );
-
-  return (
-    <div className="flex flex-col w-full h-full bg-white dark:bg-black">
-      <style>{`
-        .inbox-no-scrollbar::-webkit-scrollbar { display: none; }
-        .inbox-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        @keyframes inboxSlideIn {
-          from { opacity: 0; transform: translateY(6px); }
-          to   { opacity: 1; transform: translateY(0); }
+            cacheUsers(
+                enriched
+                    .filter(t => t.type === "dm" && t.user)
+                    .map(t => ({
+                        _id: t.user!._id,
+                        username: t.user!.username,
+                        name: t.user!.username,
+                        profilePicture: t.user!.profilePicture,
+                    }))
+            );
+        } catch {
+            // Error handling
+        } finally {
+            setLoading(false);
         }
-        .inbox-row-enter { animation: inboxSlideIn 0.2s ease forwards; }
-      `}</style>
+    };
 
-      {/* ── Header ── */}
-      <div className="px-4 pt-6 pb-3 flex items-center justify-between shrink-0 border-b border-zinc-100 dark:border-zinc-900">
-        <div>
-          <p className="text-[9px] font-black tracking-[0.35em] uppercase text-zinc-400 dark:text-zinc-600 mb-0.5">Messages</p>
-          <h1 className="font-nothing text-2xl tracking-widest text-black dark:text-white leading-none">Comms</h1>
-        </div>
-        <button className="w-9 h-9 rounded-full border border-zinc-200 dark:border-zinc-800 flex items-center justify-center text-zinc-500 hover:bg-black hover:text-white hover:border-black dark:hover:bg-white dark:hover:text-black dark:hover:border-white transition-all duration-200">
-          <Plus size={16} strokeWidth={2.5} />
-        </button>
-      </div>
+    const filtered = threads.filter(t => {
+        const name = t.type === "dm" ? t.user?.username : t.name;
+        return name?.toLowerCase().includes(search.toLowerCase());
+    });
 
-      {/* ── Search ── */}
-      <div className="px-4 py-3 shrink-0">
-        <div className="relative flex items-center group">
-          <Search size={14} className="absolute left-3.5 text-zinc-400 dark:text-zinc-600 group-focus-within:text-black dark:group-focus-within:text-white transition-colors pointer-events-none" />
-          <input
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-zinc-100 dark:bg-zinc-900 border border-transparent focus:border-zinc-300 dark:focus:border-zinc-700 rounded-xl py-2.5 pl-9 pr-4 text-[13px] outline-none transition-all text-black dark:text-white placeholder:text-zinc-400 dark:placeholder:text-zinc-600"
-          />
-        </div>
-      </div>
+    const formatTime = (iso?: string) => {
+        if (!iso) return "";
+        const d = new Date(iso);
+        const now = new Date();
+        const diffMs = now.getTime() - d.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        if (diffMins < 1) return "now";
+        if (diffMins < 60) return `${diffMins}m`;
+        if (diffDays === 0) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        if (diffDays === 1) return "Yesterday";
+        if (diffDays < 7) return d.toLocaleDateString([], { weekday: "short" });
+        return d.toLocaleDateString([], { month: "short", day: "numeric" });
+    };
 
-      {/* ── List ── */}
-      <div className="overflow-y-auto flex-1 inbox-no-scrollbar">
-        {loading && (
-          <div className="px-4 py-1 space-y-1">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="flex items-center gap-3 px-2 py-3 animate-pulse">
-                <div className="w-14 h-14 rounded-full bg-zinc-100 dark:bg-zinc-900 shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 bg-zinc-100 dark:bg-zinc-900 rounded-full w-1/3" />
-                  <div className="h-2.5 bg-zinc-100 dark:bg-zinc-900 rounded-full w-2/3" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+    const getPreviewIcon = (type?: string) => {
+        switch (type) {
+            case "image": return <Camera size={14} className="inline mr-1 text-blue-500" />;
+            case "video": return <Video size={14} className="inline mr-1 text-purple-500" />;
+            case "audio": return <Mic size={14} className="inline mr-1 text-red-500" />;
+            case "file": return <FileText size={14} className="inline mr-1 text-emerald-500" />;
+            default: return null;
+        }
+    };
 
-        {error && (
-          <div className="flex flex-col items-center justify-center py-16 gap-2 px-6">
-            <p className="text-[12px] text-red-400 text-center">{error}</p>
-          </div>
-        )}
+    const getPreview = (thread: Thread) => {
+        const msg = thread.lastMessage;
+        if (!msg) return "Start a conversation";
+        if (msg.mediaType === "image") return "Photo";
+        if (msg.mediaType === "video") return "Video";
+        if (msg.mediaType === "audio") return "Voice message";
+        if (msg.mediaType === "file") return "File";
+        if (!msg.content) return "Sent a message";
+        const isMine = msg.senderId === currentUserId;
+        const text = msg.content.length > 30 ? msg.content.slice(0, 30) + "…" : msg.content;
+        return (isMine ? "You: " : "") + text;
+    };
 
-        {!loading && !error && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 gap-4 px-6">
-            <div className="w-16 h-16 rounded-full border-2 border-dashed border-zinc-200 dark:border-zinc-800 flex items-center justify-center">
-              <MessageSquare size={20} className="text-zinc-300 dark:text-zinc-700" strokeWidth={1.5} />
-            </div>
-            <div className="text-center">
-              <p className="text-[13px] font-semibold text-zinc-800 dark:text-zinc-200">{search ? "No results" : "No conversations"}</p>
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-600 mt-1">{search ? "Try a different name" : "Start a new message"}</p>
-            </div>
-          </div>
-        )}
-
-        {!loading && !error && filtered.map((thread, idx) => {
-          const username = thread.user?.username || "Unknown";
-          const isActive = activeId === thread.threadId;
-          const isLastMine = thread.lastMessage?.senderId === currentUserId;
-          const avatarColor = getAvatarColor(username);
-          const unread = unreadMap[thread.threadId] ?? thread.unreadCount ?? 0;
-          const hasUnread = unread > 0;
-          const profilePic = thread.user?.profilePicture;
-
-          return (
-            <button
-              key={thread.threadId}
-              onClick={() => { onSelect(thread); onThreadOpen?.(thread.threadId); }}
-              className={`
-                inbox-row-enter w-full flex items-center gap-3 px-4 py-3.5
-                transition-colors duration-150 relative
-                ${isActive
-                  ? "bg-zinc-100 dark:bg-zinc-900"
-                  : hasUnread
-                    ? "bg-blue-50/60 dark:bg-blue-950/20 hover:bg-blue-50 dark:hover:bg-blue-950/30"
-                    : "hover:bg-zinc-50 dark:hover:bg-zinc-950"
+    return (
+        <div className="flex flex-col w-full h-full bg-[#f8fafc] dark:bg-[#09090b] transition-colors duration-500 border-r border-zinc-200/50 dark:border-zinc-800/50">
+            <style>{`
+                @keyframes inboxSlideIn {
+                    from { opacity: 0; transform: translateX(-10px); }
+                    to   { opacity: 1; transform: translateX(0); }
                 }
-              `}
-              style={{ animationDelay: `${idx * 30}ms` }}
-            >
-              {/* Unread accent bar */}
-              {hasUnread && !isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 bg-black dark:bg-white rounded-r-full" />
-              )}
+                .inbox-item { animation: inboxSlideIn 0.3s ease both; }
 
-              {/* Avatar */}
-              <div
-                className="relative shrink-0"
-                onClick={(e) => handleProfileClick(e, username)}
-              >
-                <div
-                  className={`w-14 h-14 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-base transition-all duration-200 ${
-                    hasUnread && !isActive ? "ring-2 ring-black dark:ring-white ring-offset-2 ring-offset-white dark:ring-offset-black" : ""
-                  }`}
-                  style={{ backgroundColor: profilePic ? undefined : avatarColor }}
-                >
-                  {profilePic ? (
-                    <Image src={profilePic} alt={username} width={56} height={56} className="w-full h-full object-cover" unoptimized />
-                  ) : (
-                    getInitials(username)
-                  )}
+                .active-item {
+                    background: white;
+                    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+                }
+                .dark .active-item {
+                    background: #18181b;
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+                }
+
+                .unread-indicator::before {
+                    content: '';
+                    position: absolute;
+                    left: 0;
+                    top: 25%;
+                    bottom: 25%;
+                    width: 4px;
+                    background: #3b82f6;
+                    border-radius: 0 4px 4px 0;
+                }
+            `}</style>
+
+            {/* Header */}
+            <div className="px-6 pt-10 pb-6 flex items-center justify-between">
+                <div>
+                    <h1 className="text-3xl font-black tracking-tight text-zinc-900 dark:text-white">Messages</h1>
+                    <p className="text-[12px] font-bold text-zinc-400 dark:text-zinc-500 mt-1 uppercase tracking-widest">
+                        {threads.length} conversations
+                    </p>
                 </div>
-                {/* Online dot */}
-                <div className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-white dark:border-black" />
-                {/* Unread badge */}
-                {hasUnread && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-[4px] bg-black dark:bg-white border-2 border-white dark:border-black rounded-full flex items-center justify-center text-[9px] font-black text-white dark:text-black pointer-events-none">
-                    {unread > 9 ? "9+" : unread}
-                  </span>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setShowGroupModal(true)}
+                        className="p-3 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all text-zinc-600 dark:text-zinc-400 active:scale-95"
+                    >
+                        <Users size={20} />
+                    </button>
+                    <button className="p-3 rounded-2xl bg-black dark:bg-white text-white dark:text-black shadow-lg hover:scale-105 active:scale-95 transition-all">
+                        <MessageSquarePlus size={20} />
+                    </button>
+                </div>
+            </div>
+
+            {/* Search */}
+            <div className="px-6 mb-4">
+                <div className="group flex items-center gap-3 bg-zinc-200/50 dark:bg-zinc-900/50 border border-transparent focus-within:border-zinc-300 dark:focus-within:border-zinc-700 rounded-2xl px-4 py-3.5 transition-all">
+                    <Search size={18} className="text-zinc-400 group-focus-within:text-zinc-900 dark:group-focus-within:text-white transition-colors" />
+                    <input
+                        type="text"
+                        placeholder="Search chats..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        className="flex-1 bg-transparent text-[15px] outline-none placeholder-zinc-500 text-zinc-900 dark:text-white font-semibold"
+                    />
+                </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto px-4 space-y-1 scrollbar-hide">
+                {loading ? (
+                    <div className="space-y-3">
+                        {[...Array(6)].map((_, i) => (
+                            <div key={i} className="flex items-center gap-4 p-4 rounded-[28px] bg-zinc-100 dark:bg-zinc-900/40 animate-pulse">
+                                <div className="w-14 h-14 rounded-2xl bg-zinc-200 dark:bg-zinc-800" />
+                                <div className="flex-1 space-y-2">
+                                    <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-1/3" />
+                                    <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-1/2" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="pb-10">
+                        {filtered.map((thread, i) => {
+                            const unread = unreadMap[thread.threadId] ?? 0;
+                            const isActive = thread.threadId === activeId;
+                            const name = thread.type === "dm" ? thread.user?.username : thread.name;
+                            const avatarSrc = thread.type === "dm" ? thread.user?.profilePicture : thread.avatar;
+
+                            return (
+                                <button
+                                    key={thread.threadId}
+                                    onClick={() => onSelect(thread)}
+                                    style={{ animationDelay: `${i * 40}ms` }}
+                                    className={`inbox-item group w-full flex items-center gap-4 p-4 rounded-[28px] transition-all duration-300 relative mb-1
+                                        ${isActive ? "active-item scale-[1.02] z-10" : "hover:bg-zinc-200/30 dark:hover:bg-zinc-900/30"}
+                                        ${unread > 0 && !isActive ? "unread-indicator" : ""}
+                                    `}
+                                >
+                                    <div className="relative flex-shrink-0">
+                                        <Avatar
+                                            src={avatarSrc}
+                                            name={name || "Group"}
+                                            size={56}
+                                            isGroup={thread.type === "group"}
+                                            className={`rounded-2xl transition-all duration-500 shadow-sm ${isActive ? 'scale-110 shadow-md' : 'group-hover:scale-105'}`} 
+                                        />
+                                        {unread > 0 && (
+                                            <span className="absolute -top-1 -right-1 flex h-6 w-6">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                                <span className="relative inline-flex rounded-full h-6 w-6 bg-blue-600 dark:bg-blue-500 text-[10px] font-black text-white items-center justify-center border-2 border-white dark:border-zinc-900">
+                                                    {unread > 9 ? '9+' : unread}
+                                                </span>
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1 min-w-0 text-left">
+                                        <div className="flex justify-between items-center mb-0.5">
+                                            <h3 className={`text-[15px] truncate transition-colors ${
+                                                isActive || unread > 0 ? "font-black text-zinc-900 dark:text-white" : "font-bold text-zinc-600 dark:text-zinc-400"
+                                            }`}>
+                                                {name}
+                                            </h3>
+                                            <span className={`text-[10px] font-black uppercase tracking-tighter ${
+                                                isActive || unread > 0 ? "text-blue-600 dark:text-blue-400" : "text-zinc-400"
+                                            }`}>
+                                                {formatTime(thread.lastActivity)}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <p className={`text-[13px] truncate pr-4 leading-tight ${
+                                                unread > 0 && !isActive ? "text-zinc-900 dark:text-zinc-100 font-bold" : "text-zinc-500 dark:text-zinc-500 font-medium"
+                                            }`}>
+                                                {getPreviewIcon(thread.lastMessage?.mediaType)}
+                                                {getPreview(thread)}
+                                            </p>
+                                            {(isActive || unread > 0) && (
+                                                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? 'bg-zinc-400/20' : 'bg-blue-600 shadow-[0_0_8px_rgba(37,99,235,0.4)]'}`} />
+                                            )}
+                                        </div>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
                 )}
-              </div>
+            </div>
 
-              {/* Info */}
-              <div className="flex flex-col items-start overflow-hidden flex-1 min-w-0">
-                <div className="flex justify-between w-full items-baseline gap-2">
-                  <span
-                    className={`text-[15px] truncate leading-tight ${
-                      hasUnread && !isActive
-                        ? "font-bold text-black dark:text-white"
-                        : isActive
-                          ? "font-semibold text-black dark:text-white"
-                          : "font-medium text-black dark:text-white"
-                    }`}
-                  >
-                    {username}
-                  </span>
-                  <span className={`text-[11px] shrink-0 tabular-nums ${
-                    hasUnread && !isActive ? "font-bold text-black dark:text-white" : "text-zinc-400 dark:text-zinc-600"
-                  }`}>
-                    {formatTime(thread.lastMessage?.createdAt || thread.lastActivity)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between w-full mt-0.5 gap-2">
-                  <div className={`flex items-center gap-1 text-[13px] truncate flex-1 min-w-0 ${
-                    hasUnread && !isActive
-                      ? "font-semibold text-zinc-800 dark:text-zinc-200"
-                      : "text-zinc-500 dark:text-zinc-500"
-                  }`}>
-                    {isLastMine && !hasUnread && (
-                      <span className="text-zinc-400 dark:text-zinc-600 shrink-0 text-[12px]">You: </span>
-                    )}
-                    <LastMessagePreview thread={thread} isActive={isActive} />
-                  </div>
-
-                  {/* Unread dot (alternative indicator for when count is shown on avatar) */}
-                  {hasUnread && !isActive && (
-                    <div className="shrink-0 w-2 h-2 rounded-full bg-black dark:bg-white" />
-                  )}
-                </div>
-              </div>
-            </button>
-          );
-        })}
-
-        {/* Bottom padding for mobile safe area */}
-        <div className="h-6 shrink-0" />
-      </div>
-    </div>
-  );
+            {showGroupModal && (
+                <CreateGroupModal
+                    onClose={() => setShowGroupModal(false)}
+                    onCreated={(thread) => {
+                        setThreads(prev => [thread, ...prev]);
+                        onSelect(thread);
+                        setShowGroupModal(false);
+                    }}
+                />
+            )}
+        </div>
+    );
 }

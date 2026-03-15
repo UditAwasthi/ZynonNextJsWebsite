@@ -1,59 +1,18 @@
 "use client";
-import { useState, useRef, useEffect, useCallback, memo } from "react";
-import { Phone, Video, MoreHorizontal, ChevronLeft, ArrowUp, Loader2, Paperclip, X, FileIcon, Play, Pause, Volume2, VolumeX, Maximize2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { getMessages, sendMessage, markMessagesSeen, addReaction, uploadChatMedia } from "../../lib/api/chatApi";
-import { getSocket } from "../../lib/socket";
-import api from "../../lib/api/api";
 
-// ── Profile picture cache (shared with InboxList) ────────────────────────────
-const profilePicCache = new Map<string, string | null>();
-async function fetchProfilePic(username: string): Promise<string | null> {
-    if (profilePicCache.has(username)) return profilePicCache.get(username) ?? null;
-    try {
-        const { data } = await api.get(`/profile/${username}`);
-        const pic =
-            data?.data?.profilePicture ??
-            data?.data?.profile?.profilePicture ??
-            data?.profilePicture ??
-            null;
-        profilePicCache.set(username, pic);
-        return pic;
-    } catch {
-        profilePicCache.set(username, null);
-        return null;
-    }
-}
-
-interface Message {
-    _id: string;
-    threadId: string;
-    senderId: { _id: string; username: string };
-    content: string;
-    createdAt: string;
-    seenBy: string[];
-    deliveredTo: string[];
-    reactions: { userId: string; emoji: string }[];
-    mediaUrl?: string;
-    mediaType?: "image" | "video" | "audio" | "file";
-    mediaMeta?: { width?: number; height?: number; duration?: number; size?: number };
-    type?: "text" | "media";
-    // client-only fields
-    _failed?: boolean;
-    _uploadProgress?: number;
-}
-
-interface MediaAttachment {
-    file: File;
-    previewUrl: string;
-    mediaType: "image" | "video" | "audio" | "file";
-}
-
-interface Thread {
-    threadId: string;
-    user: { _id: string; username: string; profilePicture?: string } | null;
-}
+import { useEffect, useRef, useState, useCallback } from "react";
+import { ArrowLeft, Phone, Video, Info, Image as ImageIcon, Send, X, Users, Search, ChevronUp, ChevronDown } from "lucide-react";
+import Link from "next/link";
+import { useChat, type Message } from "../../hooks/useChat";
+import MessageBubble from "./MessageBubble";
+import ForwardModal from "./ForwardModal";
+import AddMemberModal from "./AddMemberModal";
+import {
+    getMessages, sendMessage, markMessagesSeen, addReaction,
+    forwardMessage, pinMessage, deleteMessage, editMessage, uploadChatMedia
+} from "../../lib/api/chatApi";
+import { Avatar } from "./Avatar";
+import type { Thread } from "./InboxList";
 
 interface Props {
     thread: Thread;
@@ -62,1096 +21,600 @@ interface Props {
     token: string;
 }
 
-const EMOJI_OPTIONS = ["❤️", "😂", "🔥", "👏", "😮", "😢"];
+// We need to look up profile pictures for group participants
+// They come through from senderId once populated — cache them locally
+const profilePicCache: Record<string, string> = {};
 
-const getAvatarColor = (username: string) => {
-    const colors = ["#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#ef4444"];
-    let hash = 0;
-    for (let i = 0; i < username.length; i++) hash += username.charCodeAt(i);
-    return colors[hash % colors.length];
-};
-
-const formatTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-// ── Image Lightbox ───────────────────────────────────────────────────────────
-function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-        document.addEventListener("keydown", onKey);
-        return () => document.removeEventListener("keydown", onKey);
-    }, [onClose]);
-
-    return (
-        <div
-            className="fixed inset-0 z-[999] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
-            style={{ animation: "fadeIn 0.15s ease" }}
-            onClick={onClose}
-        >
-            <button
-                onClick={onClose}
-                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
-            >
-                <X size={18} />
-            </button>
-            <img
-                src={url}
-                alt="Full size"
-                className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
-                style={{ animation: "zoomIn 0.2s cubic-bezier(0.34,1.56,0.64,1)" }}
-                onClick={(e) => e.stopPropagation()}
-            />
-        </div>
-    );
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function isNearBottom(el: HTMLDivElement, threshold = 120): boolean {
+    return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
 }
-
-// ── Custom Audio Player ───────────────────────────────────────────────────────
-function AudioPlayer({ src, isMine, radius, isUploading, uploadProgress }: {
-    src: string;
-    isMine: boolean;
-    radius: string;
-    isUploading: boolean;
-    uploadProgress?: number;
-}) {
-    const [playing, setPlaying] = useState(false);
-    const [progress, setProgress] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const [currentTime, setCurrentTime] = useState(0);
-    const audioRef = useRef<HTMLAudioElement>(null);
-
-    const togglePlay = () => {
-        if (!audioRef.current) return;
-        if (playing) {
-            audioRef.current.pause();
-        } else {
-            audioRef.current.play();
-        }
-        setPlaying(!playing);
-    };
-
-    const handleTimeUpdate = () => {
-        if (!audioRef.current) return;
-        const ct = audioRef.current.currentTime;
-        const dur = audioRef.current.duration || 0;
-        setCurrentTime(ct);
-        setProgress(dur ? (ct / dur) * 100 : 0);
-    };
-
-    const handleEnded = () => setPlaying(false);
-
-    const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!audioRef.current || !duration) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        const pct = (e.clientX - rect.left) / rect.width;
-        audioRef.current.currentTime = pct * duration;
-    };
-
-    const fmt = (s: number) => {
-        if (!s || isNaN(s)) return "0:00";
-        const m = Math.floor(s / 60);
-        const sec = Math.floor(s % 60);
-        return `${m}:${sec.toString().padStart(2, "0")}`;
-    };
-
-    const fg = isMine ? "bg-white" : "bg-black dark:bg-white";
-    const fgMuted = isMine ? "bg-white/30" : "bg-zinc-300 dark:bg-zinc-600";
-    const textColor = isMine ? "text-white dark:text-black" : "text-black dark:text-white";
-    const textMuted = isMine ? "text-white/50 dark:text-black/50" : "text-zinc-400";
-    const bg = isMine ? "bg-black dark:bg-white" : "bg-zinc-100 dark:bg-zinc-800";
-
-    return (
-        <div
-            className={`px-3.5 py-2.5 ${bg} flex items-center gap-3 min-w-[220px]`}
-            style={{ borderRadius: radius }}
-        >
-            <audio
-                ref={audioRef}
-                src={src}
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
-                onEnded={handleEnded}
-            />
-
-            {isUploading ? (
-                <div className="flex items-center gap-2 w-full">
-                    <Loader2 size={16} className={`animate-spin shrink-0 ${textMuted}`} />
-                    <div className={`flex-1 h-1 rounded-full ${fgMuted}`}>
-                        <div className={`h-full rounded-full transition-all duration-200 ${fg}`} style={{ width: `${uploadProgress ?? 0}%` }} />
-                    </div>
-                    <span className={`text-[10px] shrink-0 ${textMuted}`}>{uploadProgress}%</span>
-                </div>
-            ) : (
-                <>
-                    {/* Play/pause */}
-                    <button
-                        onClick={togglePlay}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-90 ${
-                            isMine ? "bg-white/20 hover:bg-white/30" : "bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20"
-                        }`}
-                    >
-                        {playing
-                            ? <Pause size={14} className={textColor} fill="currentColor" />
-                            : <Play size={14} className={textColor} fill="currentColor" style={{ marginLeft: 1 }} />
-                        }
-                    </button>
-
-                    {/* Waveform-style scrub bar */}
-                    <div className="flex flex-col gap-1 flex-1">
-                        <div
-                            className={`h-1.5 rounded-full ${fgMuted} cursor-pointer relative overflow-hidden`}
-                            onClick={handleScrub}
-                        >
-                            <div
-                                className={`absolute left-0 top-0 h-full rounded-full transition-all duration-100 ${fg}`}
-                                style={{ width: `${progress}%` }}
-                            />
-                        </div>
-                        <div className={`flex justify-between text-[9px] font-mono ${textMuted}`}>
-                            <span>{fmt(currentTime)}</span>
-                            <span>{fmt(duration)}</span>
-                        </div>
-                    </div>
-
-                    <Volume2 size={13} className={`shrink-0 ${textMuted}`} />
-                </>
-            )}
-        </div>
-    );
-}
-
-// ── Video Lightbox ───────────────────────────────────────────────────────────
-function VideoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-        document.addEventListener("keydown", onKey);
-        return () => document.removeEventListener("keydown", onKey);
-    }, [onClose]);
-
-    return (
-        <div
-            className="fixed inset-0 z-[999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4"
-            style={{ animation: "fadeIn 0.15s ease" }}
-            onClick={onClose}
-        >
-            <button
-                onClick={onClose}
-                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors z-10"
-            >
-                <X size={18} />
-            </button>
-            <video
-                src={url}
-                controls
-                autoPlay
-                className="max-w-full max-h-[90vh] rounded-xl shadow-2xl"
-                style={{ animation: "zoomIn 0.2s cubic-bezier(0.34,1.56,0.64,1)" }}
-                onClick={(e) => e.stopPropagation()}
-            />
-        </div>
-    );
-}
-
-// ── Video Player (bubble) ─────────────────────────────────────────────────────
-const VideoPlayer = memo(function VideoPlayer({ src, radius, isUploading, uploadProgress, onExpand }: {
-    src: string;
-    radius: string;
-    isUploading: boolean;
-    uploadProgress?: number;
-    onExpand: () => void;
-}) {
-    // All playback state is kept LOCAL — never triggers parent re-render
-    const [playing, setPlaying] = useState(false);
-    const [muted, setMuted] = useState(false);
-    const videoRef = useRef<HTMLVideoElement>(null);
-    // DOM refs for progress bar and time — updated via RAF, not setState
-    const progressBarRef = useRef<HTMLDivElement>(null);
-    const timeRef = useRef<HTMLSpanElement>(null);
-    const rafRef = useRef<number>(0);
-
-    const fmt = (s: number) => {
-        if (!s || isNaN(s)) return "0:00";
-        return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
-    };
-
-    // RAF loop — updates DOM directly, zero React re-renders during playback
-    const startRaf = () => {
-        const tick = () => {
-            const v = videoRef.current;
-            if (!v) return;
-            const pct = v.duration ? (v.currentTime / v.duration) * 100 : 0;
-            if (progressBarRef.current) progressBarRef.current.style.width = `${pct}%`;
-            if (timeRef.current) timeRef.current.textContent = `${fmt(v.currentTime)}/${fmt(v.duration)}`;
-            rafRef.current = requestAnimationFrame(tick);
-        };
-        rafRef.current = requestAnimationFrame(tick);
-    };
-
-    const stopRaf = () => cancelAnimationFrame(rafRef.current);
-
-    useEffect(() => () => stopRaf(), []);
-
-    const togglePlay = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        const v = videoRef.current;
-        if (!v) return;
-        if (playing) { v.pause(); stopRaf(); setPlaying(false); }
-        else { v.play(); startRaf(); setPlaying(true); }
-    };
-
-    const handleEnded = () => { stopRaf(); setPlaying(false); };
-
-    const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
-        e.stopPropagation();
-        const v = videoRef.current;
-        if (!v || !v.duration) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        v.currentTime = ((e.clientX - rect.left) / rect.width) * v.duration;
-    };
-
-    const toggleMute = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        const v = videoRef.current;
-        if (!v) return;
-        v.muted = !muted;
-        setMuted(!muted);
-    };
-
-    return (
-        <div
-            className="relative overflow-hidden bg-black cursor-pointer"
-            style={{ borderRadius: radius, width: "min(260px, 72vw)" }}
-            onClick={onExpand}
-        >
-            <video
-                ref={videoRef}
-                src={src}
-                className="w-full max-h-[300px] object-cover block"
-                style={{ borderRadius: radius }}
-                onEnded={handleEnded}
-                muted={muted}
-                playsInline
-                preload="metadata"
-            />
-
-            {/* Upload overlay */}
-            {isUploading && (
-                <>
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center" style={{ borderRadius: radius }}>
-                        <div className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-sm">
-                            <Loader2 size={18} className="animate-spin text-white" />
-                        </div>
-                    </div>
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
-                        <div className="h-full bg-white transition-all duration-200 ease-out" style={{ width: `${uploadProgress ?? 0}%` }} />
-                    </div>
-                </>
-            )}
-
-            {/* Controls */}
-            {!isUploading && (
-                <div
-                    className="absolute inset-0 flex flex-col justify-end"
-                    style={{ borderRadius: radius, background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 50%)" }}
-                >
-                    <div className="px-3 pb-2.5 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            onClick={togglePlay}
-                            className="w-7 h-7 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors shrink-0 backdrop-blur-sm"
-                        >
-                            {playing
-                                ? <Pause size={12} className="text-white" fill="white" />
-                                : <Play size={12} className="text-white" fill="white" style={{ marginLeft: 1 }} />
-                            }
-                        </button>
-
-                        {/* Progress bar — width driven by RAF ref, not state */}
-                        <div
-                            className="flex-1 h-1.5 rounded-full bg-white/30 cursor-pointer relative overflow-hidden"
-                            onClick={handleScrub}
-                        >
-                            <div
-                                ref={progressBarRef}
-                                className="absolute left-0 top-0 h-full rounded-full bg-white"
-                                style={{ width: "0%" }}
-                            />
-                        </div>
-
-                        {/* Time — updated by RAF ref */}
-                        <span ref={timeRef} className="text-[9px] font-mono text-white/70 shrink-0 tabular-nums">0:00/0:00</span>
-
-                        <button onClick={toggleMute} className="text-white/70 hover:text-white transition-colors shrink-0">
-                            {muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
-                        </button>
-
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onExpand(); }}
-                            className="text-white/70 hover:text-white transition-colors shrink-0"
-                        >
-                            <Maximize2 size={12} />
-                        </button>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-});
 
 export default function ChatThread({ thread, onBack, currentUserId, token }: Props) {
-    const router = useRouter();
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [profilePic, setProfilePic] = useState<string | null>(thread.user?.profilePicture ?? null);
-    const [inputValue, setInputValue] = useState("");
-    const [loading, setLoading] = useState(true);
-    const [isTyping, setIsTyping] = useState(false);
+    const { messages, setMessages, isTyping, emitTypingStart, emitTypingStop } =
+        useChat(thread.threadId, token);
+
+    const [input, setInput] = useState("");
+    const [replyTo, setReplyTo] = useState<Message | null>(null);
+    const [editingMsg, setEditingMsg] = useState<Message | null>(null);
+    const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+    const [showAddMember, setShowAddMember] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [loadingHistory, setLoadingHistory] = useState(true);
     const [cursor, setCursor] = useState<string | undefined>();
     const [hasMore, setHasMore] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
-    const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
-    const [newMsgIds, setNewMsgIds] = useState<Set<string>>(new Set());
-    const [attachment, setAttachment] = useState<MediaAttachment | null>(null);
+
+    // ── Search state ─────────────────────────────────────────────────────────
+    const [showSearch, setShowSearch] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchResults, setSearchResults] = useState<Message[]>([]);
+    const [searchIndex, setSearchIndex] = useState(0);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const msgRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+    const bottomRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-    const [videoLightboxUrl, setVideoLightboxUrl] = useState<string | null>(null);
-    const openVideoLightbox = useCallback((url: string) => setVideoLightboxUrl(url), []);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const ownedMessageIds = useRef<Set<string>>(new Set());
-    const username = thread.user?.username || "Unknown";
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const prevScrollHeight = useRef(0);
 
-    // ── Fetch profile picture (cached) ────────────────────────────────────────
-    useEffect(() => {
-        if (!thread.user?.username) return;
-        fetchProfilePic(thread.user.username).then(pic => {
-            if (pic) setProfilePic(pic);
-        });
-    }, [thread.user?.username]);
+    const isGroup = thread.type === "group";
+    const isAdmin = false; // derive from participants when available
 
-    // ── Load initial messages ─────────────────────────────────────────────────
     useEffect(() => {
-        const fetchMessages = async () => {
-            try {
-                setLoading(true);
-                setMessages([]);
-                const res = await getMessages(thread.threadId);
-                const msgs: Message[] = res.data?.data || [];
-                setMessages(msgs);
-                if (msgs.length > 0) setCursor(msgs[0].createdAt);
-                setHasMore(msgs.length === 30);
-            } catch (err) {
-                console.error("Failed to load messages", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchMessages();
+        prevMsgCount.current = 0; // reset for new thread
+        loadHistory();
     }, [thread.threadId]);
 
-    // ── Mark messages seen ────────────────────────────────────────────────────
+    // Scroll to bottom on initial load (instant) and when I send a message (smooth)
+    const prevMsgCount = useRef(0);
     useEffect(() => {
-        if (messages.length === 0) return;
-        const unseenIds = messages
-            .filter((m) => m.senderId._id !== currentUserId && !(m.seenBy || []).includes(currentUserId))
-            .map((m) => m._id);
-        if (unseenIds.length > 0) {
-            markMessagesSeen(thread.threadId, unseenIds).catch(() => {});
+        if (loadingHistory) return;
+        const newCount = messages.length;
+        const lastMsg = messages[messages.length - 1];
+        const isMine = lastMsg?.senderId._id === currentUserId;
+
+        if (prevMsgCount.current === 0) {
+            // Initial load — jump instantly
+            bottomRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+        } else if (isMine || (scrollRef.current && isNearBottom(scrollRef.current))) {
+            // New message and user is near bottom — smooth scroll
+            bottomRef.current?.scrollIntoView({ behavior: "smooth" });
         }
-    }, [messages, thread.threadId, currentUserId]);
+        prevMsgCount.current = newCount;
+    }, [messages.length, loadingHistory]);
 
-    // ── Socket events ─────────────────────────────────────────────────────────
+    // When loading more (older), preserve scroll position
     useEffect(() => {
-        if (!token) return;
-        const socket = getSocket(token);
-        socket.emit("join_thread", thread.threadId);
-
-        const onNewMessage = (msg: Message) => {
-            setMessages((prev) => {
-                if (prev.some((m) => m._id === msg._id)) return prev;
-                if (ownedMessageIds.current.has(msg._id)) {
-                    ownedMessageIds.current.delete(msg._id);
-                    return prev;
-                }
-                return [...prev, msg];
-            });
-            setNewMsgIds((prev) => new Set(prev).add(msg._id));
-            setTimeout(() => {
-                setNewMsgIds((prev) => {
-                    const next = new Set(prev);
-                    next.delete(msg._id);
-                    return next;
-                });
-            }, 600);
-            socket.emit("message_delivered", { messageId: msg._id });
-        };
-
-        const onUserTyping = () => setIsTyping(true);
-        const onUserStopTyping = () => setIsTyping(false);
-
-        const onMessagesSeen = ({ messageIds, seenBy }: { messageIds: string[]; seenBy: string }) => {
-            setMessages((prev) =>
-                prev.map((m) =>
-                    messageIds.includes(m._id) ? { ...m, seenBy: [...(m.seenBy || []), seenBy] } : m
-                )
-            );
-        };
-
-        const onMessageDelivered = ({ messageId, userId }: { messageId: string; userId: string }) => {
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m._id === messageId ? { ...m, deliveredTo: [...(m.deliveredTo || []), userId] } : m
-                )
-            );
-        };
-
-        const onReactionUpdate = ({ messageId, userId, emoji }: { messageId: string; userId: string; emoji: string }) => {
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m._id === messageId
-                        ? { ...m, reactions: [...(m.reactions || []).filter((r) => r.userId !== userId), { userId, emoji }] }
-                        : m
-                )
-            );
-        };
-
-        socket.on("new_message", onNewMessage);
-        socket.on("user_typing", onUserTyping);
-        socket.on("user_stop_typing", onUserStopTyping);
-        socket.on("messages_seen", onMessagesSeen);
-        socket.on("message_delivered", onMessageDelivered);
-        socket.on("reaction_update", onReactionUpdate);
-
-        return () => {
-            socket.emit("leave_thread", thread.threadId);
-            socket.off("new_message", onNewMessage);
-            socket.off("user_typing", onUserTyping);
-            socket.off("user_stop_typing", onUserStopTyping);
-            socket.off("messages_seen", onMessagesSeen);
-            socket.off("message_delivered", onMessageDelivered);
-            socket.off("reaction_update", onReactionUpdate);
-        };
-    }, [thread.threadId, token]);
-
-    // ── Scroll to bottom ──────────────────────────────────────────────────────
-    useEffect(() => {
-        if (!loading) {
-            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        if (loadingMore && scrollRef.current) {
+            prevScrollHeight.current = scrollRef.current.scrollHeight;
         }
-    }, [messages, loading]);
+    }, [loadingMore]);
 
-    // ── Load more ─────────────────────────────────────────────────────────────
+    // Mark messages as seen
+    useEffect(() => {
+        const ids = messages
+            .filter(m => m.senderId._id !== currentUserId && !m.seenBy.includes(currentUserId))
+            .map(m => m._id);
+        if (ids.length > 0) {
+            markMessagesSeen(thread.threadId, ids).catch(() => { });
+        }
+    }, [messages, currentUserId, thread.threadId]);
+
+    // Build profile pic cache — senderId only has { _id, username }, no profilePicture.
+    // Fetch each unique sender's pic once and cache it.
+    useEffect(() => {
+        const unseen = messages
+            .filter(m => m.senderId._id && !profilePicCache[m.senderId._id])
+            .map(m => ({ id: m.senderId._id, username: m.senderId.username }));
+
+        const unique = [...new Map(unseen.map(u => [u.id, u])).values()];
+        if (!unique.length) return;
+
+        unique.forEach(async ({ id, username }) => {
+            try {
+                const res = await import("../../lib/api/api").then(m => m.default.get(`/profile/${username}`));
+                const pic = res.data?.data?.profilePicture ?? res.data?.data?.profile?.profilePicture;
+                if (pic) profilePicCache[id] = pic;
+            } catch { }
+        });
+    }, [messages]);
+
+    const loadHistory = async () => {
+        setLoadingHistory(true);
+        try {
+            const res = await getMessages(thread.threadId);
+            const msgs: Message[] = res.data?.data ?? [];
+            setMessages(msgs);
+            if (msgs.length > 0) {
+                setCursor(msgs[0].createdAt);
+                setHasMore(msgs.length === 30);
+            } else {
+                setHasMore(false);
+            }
+        } catch {
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
     const loadMore = async () => {
         if (!hasMore || loadingMore || !cursor) return;
+        setLoadingMore(true);
         try {
-            setLoadingMore(true);
             const res = await getMessages(thread.threadId, cursor);
-            const older: Message[] = res.data?.data || [];
-            setMessages((prev) => [...older, ...prev]);
-            if (older.length > 0) setCursor(older[0].createdAt);
+            const older: Message[] = res.data?.data ?? [];
+            if (older.length === 0) { setHasMore(false); return; }
+            setMessages(prev => {
+                const existingIds = new Set(prev.map(m => m._id));
+                const fresh = older.filter(m => !existingIds.has(m._id));
+                return [...fresh, ...prev];
+            });
+            setCursor(older[0].createdAt);
             setHasMore(older.length === 30);
-        } catch (err) {
-            console.error("Failed to load more", err);
+
+            // Restore scroll position after DOM update
+            requestAnimationFrame(() => {
+                if (scrollRef.current) {
+                    const diff = scrollRef.current.scrollHeight - prevScrollHeight.current;
+                    scrollRef.current.scrollTop += diff;
+                }
+            });
+        } catch {
         } finally {
             setLoadingMore(false);
         }
     };
 
-    // ── File pick ─────────────────────────────────────────────────────────────
-    const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const mediaType = file.type.startsWith("image/") ? "image"
-            : file.type.startsWith("video/") ? "video"
-            : file.type.startsWith("audio/") ? "audio"
-            : "file" as const;
-        const previewUrl = (mediaType === "image" || mediaType === "video")
-            ? URL.createObjectURL(file) : "";
-        setAttachment({ file, previewUrl, mediaType });
-        e.target.value = "";
+    const handleScroll = () => {
+        if (scrollRef.current && scrollRef.current.scrollTop < 100) {
+            loadMore();
+        }
     };
 
-    const clearAttachment = () => {
-        if (attachment?.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
-        setAttachment(null);
+    const handleSend = async () => {
+        const text = input.trim();
+        if (!text && !editingMsg) return;
+
+        if (editingMsg) {
+            setEditingMsg(null);
+            setInput("");
+            await editMessage(editingMsg._id, text).catch(() => { });
+            return;
+        }
+
+        const currentReply = replyTo;
+        setInput("");
+        setReplyTo(null);
+        if (typingTimer.current !== null) clearTimeout(typingTimer.current ?? undefined);
+        emitTypingStop();
+
+        try {
+            await sendMessage(thread.threadId, {
+                content: text,
+                replyTo: currentReply?._id,
+            });
+        } catch { }
     };
 
-    // ── Send — fire and forget style ──────────────────────────────────────────
-    const handleSend = () => {
-        const content = inputValue.trim();
-        const pendingAttachment = attachment;
-
-        if (!content && !pendingAttachment) return;
-
-        // Clear inputs immediately — feels instant
-        setInputValue("");
-        clearAttachment();
-
-        const tempId = `temp_${Date.now()}`;
-
-        // Show optimistic bubble right away with local preview if media
-        const optimistic: Message = {
-            _id: tempId,
-            threadId: thread.threadId,
-            senderId: { _id: currentUserId, username: "me" },
-            content,
-            createdAt: new Date().toISOString(),
-            seenBy: [],
-            deliveredTo: [],
-            reactions: [],
-            mediaUrl: pendingAttachment?.previewUrl,
-            mediaType: pendingAttachment?.mediaType,
-            type: pendingAttachment ? "media" : "text",
-            _uploadProgress: pendingAttachment ? 0 : undefined,
-        };
-
-        setMessages((prev) => [...prev, optimistic]);
-        setNewMsgIds((prev) => new Set(prev).add(tempId));
-
-        // Run upload + send in background — UI is already updated
-        const runSend = async () => {
-            try {
-                let mediaPayload: { mediaUrl: string; mediaType: string; mediaMeta?: object } | undefined;
-
-                if (pendingAttachment) {
-                    const uploaded = await uploadChatMedia(pendingAttachment.file, (pct) => {
-                        // Update progress on the optimistic bubble
-                        setMessages((prev) =>
-                            prev.map((m) => m._id === tempId ? { ...m, _uploadProgress: pct } : m)
-                        );
-                    });
-                    mediaPayload = {
-                        mediaUrl: uploaded.url,
-                        mediaType: uploaded.mediaType,
-                        mediaMeta: uploaded.mediaMeta,
-                    };
-                    // Swap local blob URL for the real Cloudinary URL while we wait for API
-                    setMessages((prev) =>
-                        prev.map((m) =>
-                            m._id === tempId
-                                ? { ...m, mediaUrl: uploaded.url, _uploadProgress: undefined }
-                                : m
-                        )
-                    );
-                }
-
-                const res = await sendMessage(thread.threadId, content, mediaPayload);
-                const real: Message = res.data?.data;
-
-                if (real?._id) {
-                    ownedMessageIds.current.add(real._id);
-                    setMessages((prev) => {
-                        const withoutDupes = prev.filter((m) => m._id !== real._id);
-                        return withoutDupes.map((m) => (m._id === tempId ? real : m));
-                    });
-                } else {
-                    setMessages((prev) => prev.filter((m) => m._id !== tempId));
-                }
-            } catch (err) {
-                console.error("Failed to send message", err);
-                // Mark as failed — show retry option
-                setMessages((prev) =>
-                    prev.map((m) => m._id === tempId ? { ...m, _failed: true, _uploadProgress: undefined } : m)
-                );
-            }
-        };
-
-        runSend();
-    };
-
-    // ── Retry failed message ──────────────────────────────────────────────────
-    const handleRetry = (failedMsg: Message) => {
-        setMessages((prev) => prev.filter((m) => m._id !== failedMsg._id));
-        // Reconstruct attachment if there was media (use the URL that was set)
-        const hasMedia = !!failedMsg.mediaUrl;
-        const tempId = `temp_${Date.now()}`;
-        const retried: Message = {
-            ...failedMsg,
-            _id: tempId,
-            _failed: false,
-            _uploadProgress: hasMedia ? 0 : undefined,
-            createdAt: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, retried]);
-
-        const runRetry = async () => {
-            try {
-                let mediaPayload: { mediaUrl: string; mediaType: string } | undefined;
-                if (failedMsg.mediaUrl && failedMsg.mediaType) {
-                    mediaPayload = { mediaUrl: failedMsg.mediaUrl, mediaType: failedMsg.mediaType };
-                }
-                const res = await sendMessage(thread.threadId, failedMsg.content, mediaPayload);
-                const real: Message = res.data?.data;
-                if (real?._id) {
-                    ownedMessageIds.current.add(real._id);
-                    setMessages((prev) => {
-                        const withoutDupes = prev.filter((m) => m._id !== real._id);
-                        return withoutDupes.map((m) => (m._id === tempId ? real : m));
-                    });
-                } else {
-                    setMessages((prev) => prev.filter((m) => m._id !== tempId));
-                }
-            } catch {
-                setMessages((prev) =>
-                    prev.map((m) => m._id === tempId ? { ...m, _failed: true, _uploadProgress: undefined } : m)
-                );
-            }
-        };
-        runRetry();
-    };
-
-    // ── Typing ────────────────────────────────────────────────────────────────
-    const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setInputValue(e.target.value);
-        if (!token) return;
-        const socket = getSocket(token);
-        socket.emit("typing_start", { threadId: thread.threadId });
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = setTimeout(() => {
-            socket.emit("typing_stop", { threadId: thread.threadId });
-        }, 1500);
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleSend();
         }
     };
 
-    // ── Status ────────────────────────────────────────────────────────────────
-    const getStatus = (msg: Message) => {
-        if (msg._failed) return "failed";
-        if (msg._id.startsWith("temp_")) return "sending";
-        if ((msg.seenBy || []).filter((id) => id !== currentUserId).length > 0) return "read";
-        if ((msg.deliveredTo || []).filter((id) => id !== currentUserId).length > 0) return "delivered";
-        return "sent";
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setInput(e.target.value);
+        emitTypingStart();
+        if (typingTimer.current !== null) clearTimeout(typingTimer.current ?? undefined);
+        typingTimer.current = setTimeout(() => emitTypingStop(), 2000);
+        // Auto-resize
+        const el = e.target;
+        el.style.height = "auto";
+        el.style.height = Math.min(el.scrollHeight, 120) + "px";
     };
 
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploading(true);
+        try {
+            const { url, type, meta } = await uploadChatMedia(file, setUploadProgress);
+            await sendMessage(thread.threadId, { attachments: [{ url, type, meta }] });
+        } catch {
+        } finally {
+            setUploading(false);
+            setUploadProgress(0);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+    };
+
+    const handleForwardSend = async (targetThreadId: string) => {
+        if (!forwardMsg) return;
+        await forwardMessage(String(forwardMsg._id), targetThreadId).catch(() => { });
+    };
+
+    const startEdit = (msg: Message) => {
+        setEditingMsg(msg);
+        setInput(msg.content || "");
+        setTimeout(() => {
+            inputRef.current?.focus();
+            const el = inputRef.current;
+            if (el) {
+                el.style.height = "auto";
+                el.style.height = Math.min(el.scrollHeight, 120) + "px";
+            }
+        }, 0);
+    };
+
+    const cancelEditOrReply = () => {
+        setEditingMsg(null);
+        setReplyTo(null);
+        setInput("");
+        if (inputRef.current) inputRef.current.style.height = "auto";
+    };
+
+    // ── Search handlers ───────────────────────────────────────────────────────
+    const openSearch = () => {
+        setShowSearch(true);
+        setTimeout(() => searchInputRef.current?.focus(), 100);
+    };
+
+    const closeSearch = () => {
+        setShowSearch(false);
+        setSearchQuery("");
+        setSearchResults([]);
+        setSearchIndex(0);
+    };
+
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const q = e.target.value;
+        setSearchQuery(q);
+        setSearchIndex(0);
+        if (!q.trim()) { setSearchResults([]); return; }
+        // Search client-side on already-loaded messages — no API call needed
+        const q_lower = q.toLowerCase();
+        const matches = messages.filter(m =>
+            m.content?.toLowerCase().includes(q_lower)
+        );
+        setSearchResults(matches);
+        // Auto-scroll to first match
+        if (matches.length > 0) {
+            setTimeout(() => scrollToMessage(matches[0]._id), 50);
+        }
+    };
+
+    const scrollToMessage = useCallback((msgId: string) => {
+        const el = msgRefs.current[msgId];
+        if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            // Flash highlight
+            el.classList.add("search-highlight");
+            setTimeout(() => el.classList.remove("search-highlight"), 1500);
+        }
+    }, []);
+
+    const goToResult = useCallback((idx: number) => {
+        if (!searchResults.length) return;
+        const clamped = Math.max(0, Math.min(idx, searchResults.length - 1));
+        setSearchIndex(clamped);
+        scrollToMessage(searchResults[clamped]._id);
+    }, [searchResults, scrollToMessage]);
+
+    // Group messages by date for dividers
+    const grouped = messages.reduce<{ date: string; msgs: Message[] }[]>((acc, msg) => {
+        const d = new Date(msg.createdAt).toDateString();
+        const last = acc[acc.length - 1];
+        if (last?.date === d) last.msgs.push(msg);
+        else acc.push({ date: d, msgs: [msg] });
+        return acc;
+    }, []);
+
+    const formatDate = (ds: string) => {
+        const d = new Date(ds);
+        const now = new Date();
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        if (d.toDateString() === now.toDateString()) return "Today";
+        if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+        return d.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
+    };
+
+    const headerName = isGroup ? thread.name ?? "Group" : thread.user?.username ?? "User";
+    const headerAvatar = isGroup ? thread.avatar : thread.user?.profilePicture;
+
+
+
+
     return (
-        <div
-            className="flex flex-col bg-white dark:bg-[#0a0a0a] overflow-hidden
-                       fixed left-0 right-0 z-40
-                       md:static md:inset-auto md:z-auto md:h-full md:w-full md:relative"
-            style={{
-                top: "calc(3.5rem + env(safe-area-inset-top, 0px))",
-                bottom: "calc(4rem + env(safe-area-inset-bottom, 0px))",
-            } as React.CSSProperties}
-        >
-
-            {/* Subtle dot grid */}
-            <div
-                className="absolute inset-0 pointer-events-none opacity-[0.025] dark:opacity-[0.05]"
-                style={{
-                    backgroundImage: "radial-gradient(circle, #888 1px, transparent 1px)",
-                    backgroundSize: "28px 28px",
-                }}
-            />
-
-            {/* ── Header ── */}
-            <div className="shrink-0 px-2 sm:px-4 border-b border-zinc-100 dark:border-zinc-800/60 flex items-center justify-between bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-xl"
-                 style={{ paddingTop: "0.75rem", paddingBottom: "0.75rem" }}>
-                <div className="flex items-center gap-1 sm:gap-3 min-w-0">
-                    <button
-                        onClick={onBack}
-                        className="md:hidden w-9 h-9 flex items-center justify-center rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white shrink-0"
-                    >
-                        <ChevronLeft size={22} />
-                    </button>
-                    {/* Avatar — clickable → profile */}
-                    <button
-                        onClick={() => router.push(`/profile/${username}`)}
-                        className="relative shrink-0 focus:outline-none"
-                    >
-                        <div
-                            className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-xs ring-2 ring-white dark:ring-zinc-800"
-                            style={{ backgroundColor: profilePic ? undefined : getAvatarColor(username) }}
-                        >
-                            {profilePic ? (
-                                <Image
-                                    src={profilePic}
-                                    alt={username}
-                                    width={36}
-                                    height={36}
-                                    className="w-full h-full object-cover"
-                                    unoptimized
-                                />
-                            ) : (
-                                username.slice(0, 2).toUpperCase()
-                            )}
-                        </div>
-                        <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white dark:border-[#0a0a0a]" />
-                    </button>
-                    <div>
-                        {/* Username — clickable → profile */}
-                        <button
-                            onClick={() => router.push(`/profile/${username}`)}
-                            className="font-semibold text-[15px] text-black dark:text-white leading-none hover:underline focus:outline-none truncate block max-w-[140px] sm:max-w-[220px] text-left"
-                        >
-                            {username}
-                        </button>
-                        <p className={`text-[10px] font-medium mt-0.5 transition-colors ${isTyping ? "text-emerald-500" : "text-zinc-400 dark:text-zinc-500"}`}>
-                            {isTyping ? "typing..." : "active now"}
-                        </p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-0.5">
-                    {[Phone, Video, MoreHorizontal].map((Icon, i) => (
-                        <button key={i} className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 dark:text-zinc-500 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all">
-                            <Icon size={18} strokeWidth={2} />
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* ── Messages ── */}
-            <div className="flex-1 overflow-y-auto chat-no-scrollbar px-3 sm:px-4 py-4 space-y-1 overscroll-contain">
-
-                {hasMore && !loading && (
-                    <div className="flex justify-center pb-2">
-                        <button
-                            onClick={loadMore}
-                            disabled={loadingMore}
-                            className="text-[10px] font-semibold tracking-widest uppercase text-zinc-400 hover:text-black dark:hover:text-white transition-colors flex items-center gap-1.5 py-1 px-3 rounded-full border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600"
-                        >
-                            {loadingMore && <Loader2 size={10} className="animate-spin" />}
-                            {loadingMore ? "Loading..." : "Load older"}
-                        </button>
-                    </div>
-                )}
-
-                {loading && (
-                    <div className="flex items-center justify-center py-20">
-                        <Loader2 size={18} className="animate-spin text-zinc-300 dark:text-zinc-600" />
-                    </div>
-                )}
-
-                {!loading && messages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-16 gap-3">
-                        <div
-                            className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl ring-4 ring-white dark:ring-zinc-800 shadow-lg"
-                            style={{ backgroundColor: getAvatarColor(username) }}
-                        >
-                            {username.slice(0, 2).toUpperCase()}
-                        </div>
-                        <p className="font-semibold text-sm text-black dark:text-white">{username}</p>
-                        <p className="text-[11px] text-zinc-400 tracking-wide">Say hi to get things started 👋</p>
-                    </div>
-                )}
-
-                {!loading && messages.length > 0 && (
-                    <div className="flex items-center gap-3 py-2">
-                        <div className="flex-1 h-px bg-zinc-100 dark:bg-zinc-800" />
-                        <span className="text-[10px] font-semibold text-zinc-400 tracking-widest uppercase">Today</span>
-                        <div className="flex-1 h-px bg-zinc-100 dark:bg-zinc-800" />
-                    </div>
-                )}
-
-                {messages.map((msg, i) => {
-                    const isMine = msg.senderId._id === currentUserId;
-                    const prevMsg = messages[i - 1];
-                    const nextMsg = messages[i + 1];
-                    const isFirst = !prevMsg || prevMsg.senderId._id !== msg.senderId._id;
-                    const isLast = !nextMsg || nextMsg.senderId._id !== msg.senderId._id;
-                    const isTemp = msg._id.startsWith("temp_");
-                    const isNew = newMsgIds.has(msg._id);
-                    const status = getStatus(msg);
-                    const isUploading = msg._uploadProgress !== undefined;
-
-                    const myRadius = `${isFirst ? "20px" : "6px"} 20px 20px ${isLast ? "20px" : "6px"}`;
-                    const theirRadius = `20px ${isFirst ? "20px" : "6px"} ${isLast ? "20px" : "6px"} 20px`;
-
-                    return (
-                        <div
-                            key={msg._id}
-                            className={`flex flex-col ${isMine ? "items-end" : "items-start"} ${isFirst && i > 0 ? "mt-3" : "mt-0.5"}`}
-                            style={{
-                                animation: isNew ? "slideIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards" : undefined,
-                                opacity: isNew ? 0 : 1,
-                            }}
-                            onMouseEnter={() => setHoveredMsg(msg._id)}
-                            onMouseLeave={() => setHoveredMsg(null)}
-                        >
-                            <div className="relative flex items-end gap-1.5 sm:gap-2 group max-w-[80%] sm:max-w-[70%] md:max-w-[60%]">
-
-                                {!isMine && (
-                                    <div className="w-6 h-6 shrink-0 mb-0.5">
-                                        {isLast && (
-                                            <div
-                                                className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[9px]"
-                                                style={{ backgroundColor: getAvatarColor(username) }}
-                                            >
-                                                {username.slice(0, 1).toUpperCase()}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Reaction picker */}
-                                {hoveredMsg === msg._id && !isTemp && (
-                                    <div
-                                        className={`absolute ${isMine ? "right-full mr-2" : "left-full ml-2"} bottom-0 z-30 hidden sm:flex items-center gap-0.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-full px-2 py-1.5 shadow-xl`}
-                                        style={{ animation: "popIn 0.15s cubic-bezier(0.34, 1.56, 0.64, 1) forwards" }}
-                                    >
-                                        {EMOJI_OPTIONS.map((emoji) => (
-                                            <button
-                                                key={emoji}
-                                                className="w-7 h-7 flex items-center justify-center text-base hover:scale-125 transition-transform rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setMessages((prev) =>
-                                                        prev.map((m) =>
-                                                            m._id === msg._id
-                                                                ? { ...m, reactions: [...(m.reactions || []).filter((r) => r.userId !== currentUserId), { userId: currentUserId, emoji }] }
-                                                                : m
-                                                        )
-                                                    );
-                                                    setHoveredMsg(null);
-                                                    addReaction(msg._id, emoji).catch(() => {
-                                                        setMessages((prev) =>
-                                                            prev.map((m) =>
-                                                                m._id === msg._id
-                                                                    ? { ...m, reactions: (m.reactions || []).filter((r) => r.userId !== currentUserId) }
-                                                                    : m
-                                                            )
-                                                        );
-                                                    });
-                                                }}
-                                            >
-                                                {emoji}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Bubble */}
-                                <div
-                                    className={`text-[14px] leading-relaxed overflow-hidden transition-opacity ${
-                                        isTemp && !msg._failed ? "opacity-60" : "opacity-100"
-                                    } ${
-                                        msg.mediaUrl && !msg.content
-                                            ? "p-0 bg-transparent"
-                                            : isMine
-                                                ? "px-3.5 py-2.5 bg-black text-white dark:bg-white dark:text-black"
-                                                : "px-3.5 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
-                                    }`}
-                                    style={{ borderRadius: isMine ? myRadius : theirRadius, wordBreak: "break-word" }}
-                                >
-                                    {/* Image — clickable lightbox */}
-                                    {msg.mediaUrl && msg.mediaType === "image" && (
-                                        <div
-                                            className="relative overflow-hidden cursor-pointer"
-                                            style={{ borderRadius: isMine ? myRadius : theirRadius }}
-                                            onClick={() => !isUploading && setLightboxUrl(msg.mediaUrl!)}
-                                        >
-                                            <img
-                                                src={msg.mediaUrl}
-                                                alt="media"
-                                                className="object-cover block transition-transform duration-200 hover:scale-[1.02]"
-                                                style={{ borderRadius: isMine ? myRadius : theirRadius, maxWidth: "min(260px, 72vw)", maxHeight: "320px" }}
-                                            />
-                                            {isUploading && (
-                                                <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
-                                                    <div
-                                                        className="h-full bg-white transition-all duration-200 ease-out"
-                                                        style={{ width: `${msg._uploadProgress ?? 0}%` }}
-                                                    />
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* Video — show local preview instantly, controls hidden until uploaded */}
-                                    {/* Video — custom player with lightbox */}
-                                    {msg.mediaUrl && msg.mediaType === "video" && (
-                                        <VideoPlayer
-                                            src={msg.mediaUrl}
-                                            radius={isMine ? myRadius : theirRadius}
-                                            isUploading={isUploading}
-                                            uploadProgress={msg._uploadProgress}
-                                            onExpand={() => !isUploading && openVideoLightbox(msg.mediaUrl!)}
-                                        />
-                                    )}
-
-                                    {/* Audio — custom player */}
-                                    {msg.mediaUrl && msg.mediaType === "audio" && (
-                                        <AudioPlayer
-                                            src={msg.mediaUrl}
-                                            isMine={isMine}
-                                            radius={isMine ? myRadius : theirRadius}
-                                            isUploading={isUploading}
-                                            uploadProgress={msg._uploadProgress}
-                                        />
-                                    )}
-
-                                    {/* File */}
-                                    {msg.mediaUrl && msg.mediaType === "file" && (
-                                        <div
-                                            className={`flex items-center gap-2 px-3.5 py-2.5 ${isMine ? "bg-black text-white dark:bg-white dark:text-black" : "bg-zinc-100 dark:bg-zinc-800"}`}
-                                            style={{ borderRadius: isMine ? myRadius : theirRadius }}
-                                        >
-                                            {isUploading
-                                                ? <><Loader2 size={14} className="animate-spin" /><span className="text-[11px]">{msg._uploadProgress}%</span></>
-                                                : <><FileIcon size={16} className="shrink-0" /><span className="text-[13px] truncate max-w-[150px] sm:max-w-[180px]">Download file</span></>
-                                            }
-                                        </div>
-                                    )}
-
-                                    {/* Caption / text */}
-                                    {msg.content && (
-                                        <p className={msg.mediaUrl ? "px-3.5 pt-2 pb-2.5" : ""}>{msg.content}</p>
-                                    )}
-
-                                    {/* Reactions */}
-                                    {(msg.reactions?.length > 0) && (
-                                        <div className={`flex gap-0.5 mt-1.5 flex-wrap ${msg.mediaUrl && !msg.content ? "px-3.5 pb-2" : ""}`}>
-                                            {msg.reactions.map((r, ri) => (
-                                                <span key={ri} className="text-xs bg-white/20 dark:bg-black/20 rounded-full px-1 py-0.5">{r.emoji}</span>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Status row */}
-                            {isMine && isLast && (
-                                <div className="flex items-center gap-1.5 mt-1 pr-1">
-                                    <span className="text-[10px] text-zinc-400">{formatTime(msg.createdAt)}</span>
-                                    {status === "sending" && <span className="text-[10px] text-zinc-400">Sending…</span>}
-                                    {status === "failed" && (
-                                        <button
-                                            onClick={() => handleRetry(msg)}
-                                            className="text-[10px] text-red-400 font-medium hover:text-red-500 transition-colors"
-                                        >
-                                            Failed · Tap to retry
-                                        </button>
-                                    )}
-                                    {status === "read" && <span className="text-[10px] text-blue-400 font-medium">Read</span>}
-                                    {status === "delivered" && <span className="text-[10px] text-zinc-400">Delivered</span>}
-                                    {status === "sent" && <span className="text-[10px] text-zinc-400">Sent</span>}
-                                </div>
-                            )}
-                            {!isMine && isLast && (
-                                <div className="flex items-center gap-1 mt-1 pl-8">
-                                    <span className="text-[10px] text-zinc-400">{formatTime(msg.createdAt)}</span>
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-
-                {/* Typing indicator */}
-                {isTyping && (
-                    <div className="flex items-end gap-2 mt-2" style={{ animation: "slideIn 0.2s ease forwards" }}>
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[9px] shrink-0" style={{ backgroundColor: getAvatarColor(username) }}>
-                            {username.slice(0, 1).toUpperCase()}
-                        </div>
-                        <div className="bg-zinc-100 dark:bg-zinc-800 rounded-[20px] rounded-bl-[6px] px-4 py-3 flex gap-1 items-center">
-                            <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: "0ms", animationDuration: "0.8s" }} />
-                            <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: "150ms", animationDuration: "0.8s" }} />
-                            <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" style={{ animationDelay: "300ms", animationDuration: "0.8s" }} />
-                        </div>
-                    </div>
-                )}
-
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* ── Input ── */}
-            <div className="shrink-0 border-t border-zinc-100 dark:border-zinc-800/60 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-xl">
-
-                {/* Attachment preview */}
-                {attachment && (
-                    <div className="px-4 pt-3 pb-1 flex items-center gap-3">
-                        <div className="relative">
-                            {attachment.mediaType === "image" && attachment.previewUrl && (
-                                <img src={attachment.previewUrl} alt="preview" className="w-16 h-16 rounded-xl object-cover border border-zinc-200 dark:border-zinc-700" />
-                            )}
-                            {attachment.mediaType === "video" && attachment.previewUrl && (
-                                <video src={attachment.previewUrl} className="w-16 h-16 rounded-xl object-cover border border-zinc-200 dark:border-zinc-700" />
-                            )}
-                            {(attachment.mediaType === "audio" || attachment.mediaType === "file") && (
-                                <div className="w-16 h-16 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex flex-col items-center justify-center border border-zinc-200 dark:border-zinc-700">
-                                    <FileIcon size={20} className="text-zinc-500" />
-                                    <span className="text-[9px] text-zinc-400 mt-1 uppercase tracking-wide">{attachment.mediaType}</span>
-                                </div>
-                            )}
-                            <button
-                                onClick={clearAttachment}
-                                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-zinc-800 dark:bg-white text-white dark:text-black rounded-full flex items-center justify-center hover:scale-110 transition-transform"
-                            >
-                                <X size={10} strokeWidth={3} />
-                            </button>
-                        </div>
-                        <div className="flex-1">
-                            <p className="text-[11px] font-semibold text-black dark:text-white truncate max-w-[180px] sm:max-w-[240px]">{attachment.file.name}</p>
-                            <p className="text-[10px] text-zinc-400 mt-0.5">{(attachment.file.size / 1024).toFixed(0)} KB</p>
-                        </div>
-                    </div>
-                )}
-
-                <div className="px-3 sm:px-4 py-3 flex items-center gap-2">
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.zip"
-                        className="hidden"
-                        onChange={handleFilePick}
-                    />
-                    <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-9 h-9 rounded-full flex items-center justify-center text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all shrink-0 active:scale-90"
-                    >
-                        <Paperclip size={17} strokeWidth={2} />
-                    </button>
-
-                    <div className="flex-1 flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800/80 rounded-full px-4 py-2.5 border border-transparent focus-within:border-zinc-300 dark:focus-within:border-zinc-600 transition-all">
-                        <input
-                            type="text"
-                            value={inputValue}
-                            onChange={handleTyping}
-                            onKeyDown={handleKeyDown}
-                            placeholder={attachment ? "Add a caption..." : `Message ${username}...`}
-                            className="flex-1 bg-transparent outline-none text-[16px] sm:text-sm text-black dark:text-white placeholder:text-zinc-400"
-                        />
-
-                    </div>
-
-                    <button
-                        onClick={handleSend}
-                        disabled={!inputValue.trim() && !attachment}
-                        className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                            inputValue.trim() || attachment
-                                ? "bg-black dark:bg-white text-white dark:text-black hover:scale-105 active:scale-95 shadow-md"
-                                : "bg-zinc-200 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
-                        }`}
-                    >
-                        <ArrowUp size={15} strokeWidth={2.5} />
-                    </button>
-                </div>
-            </div>
-
+        <div className="flex flex-col h-full bg-[#f8f9fb] dark:bg-[#0a0a0c] transition-colors duration-700">
             <style>{`
-                .chat-no-scrollbar::-webkit-scrollbar { display: none; }
-                .chat-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-                @keyframes slideIn {
-                    from { opacity: 0; transform: translateY(8px) scale(0.97); }
-                    to   { opacity: 1; transform: translateY(0) scale(1); }
+                @keyframes searchSlideDown {
+                    from { opacity: 0; transform: translateY(-8px); }
+                    to   { opacity: 1; transform: translateY(0); }
                 }
-                @keyframes popIn {
-                    from { opacity: 0; transform: scale(0.8); }
-                    to   { opacity: 1; transform: scale(1); }
+                .search-bar-in { animation: searchSlideDown 0.2s ease both; }
+                @keyframes searchHighlight {
+                    0%   { background: rgba(59,130,246,0.25); }
+                    100% { background: transparent; }
                 }
-                @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to   { opacity: 1; }
-                }
-                @keyframes zoomIn {
-                    from { opacity: 0; transform: scale(0.92); }
-                    to   { opacity: 1; transform: scale(1); }
-                }
+                .search-highlight { animation: searchHighlight 1.5s ease forwards; border-radius: 12px; }
             `}</style>
 
-            {/* Lightbox */}
-            {lightboxUrl && <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
-            {videoLightboxUrl && <VideoLightbox url={videoLightboxUrl} onClose={() => setVideoLightboxUrl(null)} />}
+            {/* Floating Glass Header */}
+            <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/70 dark:bg-[#121215]/80 border-b border-zinc-200/50 dark:border-zinc-800/50 shadow-sm transition-all">
+                <div className="px-4 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={onBack}
+                            className="md:hidden group p-2 rounded-full hover:bg-white dark:hover:bg-zinc-800 shadow-none hover:shadow-md transition-all active:scale-90"
+                        >
+                            <ArrowLeft size={22} className="text-zinc-600 dark:text-zinc-300 group-hover:-translate-x-0.5 transition-transform" />
+                        </button>
+
+                        <div className="relative group cursor-pointer">
+                            <Avatar
+                                src={headerAvatar}
+                                name={headerName}
+                                size={44}
+                                isGroup={isGroup}
+                                className="rounded-2xl shadow-sm group-hover:shadow-md transition-shadow"
+                            />
+                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-[#121215] rounded-full" />
+                        </div>
+
+                        <div className="flex flex-col">
+                            {/* Clickable username for DM threads */}
+                            {!isGroup && thread.user?.username ? (
+                                <Link
+                                    href={`/profile/${thread.user.username}`}
+                                    className="font-bold text-[17px] text-zinc-900 dark:text-zinc-100 tracking-tight leading-none hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                                >
+                                    {headerName}
+                                </Link>
+                            ) : (
+                                <h2 className="font-bold text-[17px] text-zinc-900 dark:text-zinc-100 tracking-tight leading-none">
+                                    {headerName}
+                                </h2>
+                            )}
+                            <div className="flex items-center gap-1.5 mt-1">
+                                {isTyping ? (
+                                    <div className="flex items-center gap-1">
+                                        <span className="flex gap-1">
+                                            {[0, 150, 300].map(d => (
+                                                <span key={d} className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: `${d}ms` }} />
+                                            ))}
+                                        </span>
+                                        <span className="text-[11px] font-bold text-blue-500 uppercase tracking-widest italic">Typing</span>
+                                    </div>
+                                ) : (
+                                    <span className="text-[12px] font-medium text-zinc-400">
+                                        {isGroup ? "Community" : "Active now"}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {/* Search toggle */}
+                        <button
+                            onClick={showSearch ? closeSearch : openSearch}
+                            className={`p-2.5 rounded-xl transition-all active:scale-95 ${
+                                showSearch
+                                    ? "bg-blue-500 text-white"
+                                    : "text-zinc-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-800 hover:text-blue-500"
+                            }`}
+                        >
+                            <Search size={20} />
+                        </button>
+
+                        {isGroup && (
+                            <button
+                                onClick={() => setShowAddMember(true)}
+                                className="p-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-800 hover:text-blue-500 transition-all active:scale-95"
+                            >
+                                <Users size={20} />
+                            </button>
+                        )}
+                        <button className="p-2.5 rounded-xl text-zinc-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-800 transition-all active:scale-95">
+                            <Info size={20} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Search bar — slides down when open */}
+                {showSearch && (
+                    <div className="search-bar-in px-4 pb-3 flex items-center gap-2">
+                        <div className="flex-1 flex items-center gap-2 bg-zinc-100 dark:bg-zinc-900 rounded-2xl px-4 py-2.5 border border-zinc-200/50 dark:border-zinc-800">
+                            <Search size={15} className="text-zinc-400 shrink-0" />
+                            <input
+                                ref={searchInputRef}
+                                type="text"
+                                value={searchQuery}
+                                onChange={handleSearchChange}
+                                onKeyDown={e => {
+                                    if (e.key === "Enter") goToResult(searchIndex + 1);
+                                    if (e.key === "Escape") closeSearch();
+                                }}
+                                placeholder="Search in conversation…"
+                                className="flex-1 bg-transparent text-[14px] outline-none dark:text-white placeholder-zinc-400"
+                            />
+                            {searchQuery && (
+                                <span className="text-[11px] font-bold text-zinc-400 shrink-0">
+                                    {searchResults.length > 0 ? `${searchIndex + 1}/${searchResults.length}` : "0"}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Prev / Next */}
+                        <button
+                            onClick={() => goToResult(searchIndex - 1)}
+                            disabled={!searchResults.length || searchIndex === 0}
+                            className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 text-zinc-500 disabled:opacity-30 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all active:scale-90"
+                        >
+                            <ChevronUp size={16} />
+                        </button>
+                        <button
+                            onClick={() => goToResult(searchIndex + 1)}
+                            disabled={!searchResults.length || searchIndex === searchResults.length - 1}
+                            className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 text-zinc-500 disabled:opacity-30 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-all active:scale-90"
+                        >
+                            <ChevronDown size={16} />
+                        </button>
+                    </div>
+                )}
+            </header>
+
+            {/* Messages Stage */}
+            <div
+                ref={scrollRef}
+                onScroll={handleScroll}
+                className="flex-1 overflow-y-auto overscroll-contain px-4 lg:px-8 space-y-6 py-6 scroll-smooth"
+            >
+                {loadingHistory ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-4">
+                        <div className="w-8 h-8 border-[3px] border-zinc-200 dark:border-zinc-800 border-t-blue-500 rounded-full animate-spin" />
+                        <p className="text-sm font-medium text-zinc-400 animate-pulse">Decrypting messages...</p>
+                    </div>
+                ) : messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center py-20 animate-in fade-in zoom-in duration-700">
+                        <div className="relative mb-6">
+                            <Avatar src={headerAvatar} name={headerName} size={90} isGroup={isGroup} className="rounded-[32px] shadow-2xl" />
+                            <div className="absolute -bottom-2 -right-2 bg-white dark:bg-zinc-900 p-2 rounded-full shadow-lg">👋</div>
+                        </div>
+                        <h3 className="text-xl font-bold text-zinc-800 dark:text-zinc-200">Your conversation starts here</h3>
+                        <p className="text-zinc-400 text-sm mt-2 max-w-[200px]">Send a message to break the ice with {headerName}</p>
+                    </div>
+                ) : (
+                    grouped.map(({ date, msgs }) => (
+                        <div key={date} className="space-y-4">
+                            <div className="sticky top-2 z-10 flex justify-center py-4">
+                                <span className="px-4 py-1.5 rounded-full bg-white/50 dark:bg-zinc-900/50 backdrop-blur-md text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-tighter border border-zinc-200/50 dark:border-zinc-800/50 shadow-sm">
+                                    {formatDate(date)}
+                                </span>
+                            </div>
+
+                            <div className="space-y-1">
+                                {msgs.map((msg, i) => {
+                                    const isMine = msg.senderId._id === currentUserId;
+                                    const prevMsg = msgs[i - 1];
+                                    const sameAsPrev = prevMsg?.senderId._id === msg.senderId._id;
+
+                                    return (
+                                        <div
+                                            key={msg._id}
+                                            ref={el => { msgRefs.current[msg._id] = el; }}
+                                            className={`${!sameAsPrev && i > 0 ? "mt-6" : "mt-0.5"} transition-all duration-500 animate-in slide-in-from-bottom-2`}
+                                        >
+                                            <MessageBubble
+                                                message={msg}
+                                                isMine={isMine}
+                                                currentUserId={currentUserId}
+                                                isAdmin={isAdmin}
+                                                senderProfilePicture={profilePicCache[msg.senderId._id]}
+                                                showSenderInfo={!isMine && !sameAsPrev}
+                                                // Pass these handlers to resolve the TS error:
+                                                onReply={setReplyTo}
+                                                onEdit={startEdit}
+                                                onDelete={id => deleteMessage(id).catch(() => { })}
+                                                onReact={(id, e) => addReaction(id, e).catch(() => { })}
+                                                onForward={setForwardMsg}
+                                                onPin={id => pinMessage(id).catch(() => { })}
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))
+                )}
+                <div ref={bottomRef} className="h-4" />
+            </div>
+
+            {/* Input Dock */}
+            <div className="px-4 pb-6 pt-2 bg-gradient-to-t from-[#f8f9fb] via-[#f8f9fb] dark:from-[#0a0a0c] dark:via-[#0a0a0c] to-transparent">
+                <div className="max-w-4xl mx-auto">
+
+                    {/* Active Interaction Banner */}
+                    {(replyTo || editingMsg) && (
+                        <div className="flex items-center gap-3 mx-2 mb-3 px-4 py-3 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md rounded-[20px] border border-zinc-200/50 dark:border-zinc-800/50 animate-in slide-in-from-bottom-4 duration-300 shadow-xl">
+                            <div className="w-1 h-8 bg-blue-500 rounded-full" />
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest leading-none mb-1">
+                                    {editingMsg ? "Editing" : "Replying to " + replyTo?.senderId.username}
+                                </p>
+                                <p className="text-sm text-zinc-600 dark:text-zinc-400 truncate italic">
+                                    "{editingMsg?.content || replyTo?.content || "Attachment"}"
+                                </p>
+                            </div>
+                            <button onClick={cancelEditOrReply} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                                <X size={16} className="text-zinc-400" />
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Main Input Bar */}
+                    <div className="relative flex items-end gap-2 p-2 bg-white dark:bg-[#121215] rounded-[30px] border border-zinc-200/50 dark:border-zinc-800/50 shadow-[0_10px_40px_rgba(0,0,0,0.04)] dark:shadow-[0_10px_40px_rgba(0,0,0,0.2)]">
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-500 transition-all active:scale-90"
+                        >
+                            <ImageIcon size={22} className="opacity-80 group-hover:opacity-100" />
+                        </button>
+
+                        <textarea
+                            ref={inputRef}
+                            value={input}
+                            onChange={handleInputChange}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Write your message..."
+                            className="flex-1 bg-transparent py-3 px-2 text-[15px] dark:text-white outline-none placeholder-zinc-400 leading-relaxed resize-none overflow-hidden"
+                            style={{ height: "46px", maxHeight: "180px" }}
+                        />
+
+                        <button
+                            onClick={handleSend}
+                            disabled={!input.trim()}
+                            className={`w-11 h-11 flex items-center justify-center rounded-full transition-all duration-300 ${input.trim()
+                                    ? "bg-blue-600 text-white shadow-[0_4px_15px_rgba(37,99,235,0.4)] hover:scale-105 active:scale-95"
+                                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
+                                }`}
+                        >
+                            <Send size={18} className={input.trim() ? "translate-x-0.5 -translate-y-0.5" : ""} />
+                        </button>
+                    </div>
+
+                    {uploading && (
+                        <div className="mt-3 px-4 animate-in fade-in duration-500">
+                            <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-900 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-blue-500 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(59,130,246,0.5)]"
+                                    style={{ width: `${uploadProgress}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {forwardMsg && (
+                <ForwardModal
+                    onClose={() => setForwardMsg(null)}
+                    onForward={async (tid) => { await handleForwardSend(tid); }}
+                />
+            )}
+
+            {showAddMember && (
+                <AddMemberModal
+                    threadId={thread.threadId}
+                    onClose={() => setShowAddMember(false)}
+                />
+            )}
         </div>
     );
 }
