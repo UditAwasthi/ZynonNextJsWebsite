@@ -123,14 +123,15 @@ export default function CreateProfilePage() {
                             <div className="space-y-4">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Full Name *</label>
-                                    <input name="name" autoFocus value={form.name} onChange={handleChange} placeholder="What should we call you?" className="w-full bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 rounded-2xl py-4 px-5 text-sm outline-none focus:ring-1 focus:ring-[#FF3131]/20 transition-all" />
+                                    <input name="name" autoFocus value={form.name} onChange={handleChange} placeholder="What should we call you?" className="w-full bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 rounded-2xl py-4 px-5 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 outline-none focus:ring-1 focus:ring-[#FF3131]/20 transition-all" />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Bio</label>
-                                    <textarea name="bio" value={form.bio} onChange={handleChange} placeholder="Tell us your story..." rows={3} className="w-full bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 rounded-2xl py-4 px-5 text-sm outline-none focus:ring-1 focus:ring-[#FF3131]/20 resize-none" />
+                                    <textarea name="bio" value={form.bio} onChange={handleChange} placeholder="Tell us your story..." rows={3} className="w-full bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 rounded-2xl py-4 px-5 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 outline-none focus:ring-1 focus:ring-[#FF3131]/20 resize-none" />
                                 </div>
                             </div>
-                            <button onClick={nextStep} disabled={!form.name} className="w-full bg-zinc-900 dark:bg-white text-white dark:text-black py-4.5 rounded-xl font-black uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-30 active:scale-[0.98] transition-all">
+                            {/* FIX: replaced invalid py-4.5 with py-[18px], added explicit text colors */}
+                            <button onClick={nextStep} disabled={!form.name} className="w-full bg-zinc-900 dark:bg-white text-white dark:text-black py-[18px] rounded-xl font-black uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-30 active:scale-[0.98] transition-all">
                                 Continue <ChevronRight size={18} />
                             </button>
                         </div>
@@ -151,20 +152,23 @@ export default function CreateProfilePage() {
                                     <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Location</label>
                                     <div className="relative group">
                                         <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-300 group-focus-within:text-[#FF3131] transition-colors" size={16} />
-                                        <input name="location" value={form.location} onChange={handleChange} placeholder="City, Country" className="w-full bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 rounded-2xl py-4 pl-12 pr-5 text-sm outline-none focus:ring-1 focus:ring-[#FF3131]/20" />
+                                        {/* FIX: added explicit text color for input */}
+                                        <input name="location" value={form.location} onChange={handleChange} placeholder="City, Country" className="w-full bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 rounded-2xl py-4 pl-12 pr-5 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 outline-none focus:ring-1 focus:ring-[#FF3131]/20" />
                                     </div>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Website</label>
                                     <div className="relative group">
                                         <Globe className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-300 group-focus-within:text-[#FF3131] transition-colors" size={16} />
-                                        <input name="website" value={form.website} onChange={handleChange} placeholder="https://..." className="w-full bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 rounded-2xl py-4 pl-12 pr-5 text-sm outline-none focus:ring-1 focus:ring-[#FF3131]/20" />
+                                        {/* FIX: added explicit text color for input */}
+                                        <input name="website" value={form.website} onChange={handleChange} placeholder="https://..." className="w-full bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 rounded-2xl py-4 pl-12 pr-5 text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 outline-none focus:ring-1 focus:ring-[#FF3131]/20" />
                                     </div>
                                 </div>
                             </div>
+                            {/* FIX: replaced invalid py-4.5 with py-[18px], added text-zinc-900 to Back button */}
                             <div className="flex gap-3 pt-2">
-                                <button onClick={prevStep} className="flex-1 border border-zinc-200 dark:border-zinc-800 py-4.5 rounded-2xl font-black uppercase text-[10px] tracking-widest dark:text-white">Back</button>
-                                <button onClick={nextStep} className="flex-[2] bg-zinc-900 dark:bg-white text-white dark:text-black py-4.5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-[0.98]">Continue</button>
+                                <button onClick={prevStep} className="flex-1 border border-zinc-200 dark:border-zinc-800 py-[18px] rounded-2xl font-black uppercase text-[10px] tracking-widest text-zinc-900 dark:text-white">Back</button>
+                                <button onClick={nextStep} className="flex-[2] bg-zinc-900 dark:bg-white text-white dark:text-black py-[18px] rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-[0.98]">Continue</button>
                             </div>
                         </div>
                     )}
@@ -184,7 +188,7 @@ export default function CreateProfilePage() {
                                 >
                                     <div className={`p-3 rounded-2xl ${!form.isPrivate ? 'bg-[#FF3131] text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'}`}><Globe size={24} /></div>
                                     <div className="text-left">
-                                        <p className="text-xs font-black uppercase tracking-tight dark:text-white">Public</p>
+                                        <p className="text-xs font-black uppercase tracking-tight text-zinc-900 dark:text-white">Public</p>
                                         <p className="text-[9px] font-medium text-zinc-500">Visible to all users.</p>
                                     </div>
                                 </button>
@@ -194,15 +198,16 @@ export default function CreateProfilePage() {
                                 >
                                     <div className={`p-3 rounded-2xl ${form.isPrivate ? 'bg-[#FF3131] text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'}`}><Lock size={24} /></div>
                                     <div className="text-left">
-                                        <p className="text-xs font-black uppercase tracking-tight dark:text-white">Private</p>
+                                        <p className="text-xs font-black uppercase tracking-tight text-zinc-900 dark:text-white">Private</p>
                                         <p className="text-[9px] font-medium text-zinc-500">Manual follower approval.</p>
                                     </div>
                                 </button>
                             </div>
 
+                            {/* FIX: replaced invalid py-4.5 with py-[18px], added text-zinc-900 to Back button */}
                             <div className="flex gap-3 pt-2">
-                                <button onClick={prevStep} className="flex-1 border border-zinc-200 dark:border-zinc-800 py-4.5 rounded-2xl font-black uppercase text-[10px] tracking-widest dark:text-white">Back</button>
-                                <button onClick={nextStep} className="flex-[2] bg-zinc-900 dark:bg-white text-white dark:text-black py-4.5 rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-[0.98]">Upload Avatar</button>
+                                <button onClick={prevStep} className="flex-1 border border-zinc-200 dark:border-zinc-800 py-[18px] rounded-2xl font-black uppercase text-[10px] tracking-widest text-zinc-900 dark:text-white">Back</button>
+                                <button onClick={nextStep} className="flex-[2] bg-zinc-900 dark:bg-white text-white dark:text-black py-[18px] rounded-2xl font-black uppercase text-[10px] tracking-widest active:scale-[0.98]">Upload Avatar</button>
                             </div>
                         </div>
                     )}
@@ -243,12 +248,13 @@ export default function CreateProfilePage() {
                                         <AlertCircle size={14} /> {error}
                                     </div>
                                 )}
+                                {/* FIX: replaced invalid py-4.5 with py-[18px], added text-zinc-900 to Back button */}
                                 <div className="flex gap-3">
-                                    <button onClick={prevStep} disabled={loading} className="flex-1 border border-zinc-200 dark:border-zinc-800 py-4.5 rounded-2xl font-black uppercase text-[10px] tracking-widest dark:text-white">Back</button>
+                                    <button onClick={prevStep} disabled={loading} className="flex-1 border border-zinc-200 dark:border-zinc-800 py-[18px] rounded-2xl font-black uppercase text-[10px] tracking-widest text-zinc-900 dark:text-white">Back</button>
                                     <button
-                                        onClick={nextStep} // Change this from finalizeProfile
+                                        onClick={nextStep}
                                         disabled={loading}
-                                        className="flex-[2] bg-[#FF3131] text-white py-4.5 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 shadow-[0_10px_20px_-10px_rgba(255,49,49,0.5)] active:scale-[0.98] transition-all"
+                                        className="flex-[2] bg-[#FF3131] text-white py-[18px] rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 shadow-[0_10px_20px_-10px_rgba(255,49,49,0.5)] active:scale-[0.98] transition-all"
                                     >
                                         Review Profile
                                     </button>
@@ -295,53 +301,58 @@ export default function CreateProfilePage() {
                                         {form.location && (
                                             <div className="space-y-1">
                                                 <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Location</span>
-                                                <p className="text-xs font-bold dark:text-white flex items-center gap-1"><MapPin size={12} /> {form.location}</p>
+                                                {/* FIX: added text-zinc-900 for light mode */}
+                                                <p className="text-xs font-bold text-zinc-900 dark:text-white flex items-center gap-1"><MapPin size={12} /> {form.location}</p>
                                             </div>
                                         )}
                                         {form.website && (
                                             <div className="space-y-1">
                                                 <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Website</span>
-                                                <p className="text-xs font-bold dark:text-white flex items-center gap-1 truncate"><Globe size={12} /> {form.website.replace(/^https?:\/\//, '')}</p>
+                                                {/* FIX: added text-zinc-900 for light mode */}
+                                                <p className="text-xs font-bold text-zinc-900 dark:text-white flex items-center gap-1 truncate"><Globe size={12} /> {form.website.replace(/^https?:\/\//, '')}</p>
                                             </div>
                                         )}
                                     </div>
                                 </div>
                             </div>
 
+                            {/* FIX: moved loading progress OUTSIDE the button row, above it */}
                             <div className="mt-auto space-y-4">
                                 {error && (
                                     <div className="flex items-center gap-2 text-[#FF3131] text-[10px] font-black uppercase tracking-tighter bg-[#FF3131]/5 p-3 rounded-xl border border-[#FF3131]/10">
                                         <AlertCircle size={14} /> {error}
                                     </div>
                                 )}
+
+                                {/* FIX: loading progress block is now its own row above the buttons */}
+                                {loading && (
+                                    <div className="space-y-2 animate-in fade-in duration-300">
+                                        <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                                            <span>{loadingStage}</span>
+                                            {uploadProgress > 0 && <span>{uploadProgress}%</span>}
+                                        </div>
+                                        <div className="h-1 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-[#FF3131] shadow-[0_0_10px_rgba(255,49,49,0.5)] transition-all duration-300 ease-out"
+                                                style={{ width: `${uploadProgress || (loading ? 30 : 0)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* FIX: buttons row is now clean, py-4.5 → py-[18px], added text-zinc-900 to Edit Profile */}
                                 <div className="flex gap-3">
                                     <button
                                         onClick={() => setStep(1)}
                                         disabled={loading}
-                                        className="flex-1 border border-zinc-200 dark:border-zinc-800 py-4.5 rounded-2xl font-black uppercase text-[10px] tracking-widest dark:text-white hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+                                        className="flex-1 border border-zinc-200 dark:border-zinc-800 py-[18px] rounded-2xl font-black uppercase text-[10px] tracking-widest text-zinc-900 dark:text-white hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
                                     >
                                         Edit Profile
                                     </button>
-                                    {loading && (
-                                        <div className="space-y-3 mt-4 animate-in fade-in duration-300">
-                                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                                                <span>{loadingStage}</span>
-                                                {uploadProgress > 0 && <span>{uploadProgress}%</span>}
-                                            </div>
-
-                                            {/* Modern Progress Track */}
-                                            <div className="h-1 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-[#FF3131] shadow-[0_0_10px_rgba(255,49,49,0.5)] transition-all duration-300 ease-out"
-                                                    style={{ width: `${uploadProgress || (loading ? 30 : 0)}%` }}
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
                                     <button
                                         onClick={finalizeProfile}
                                         disabled={loading}
-                                        className="flex-[2] bg-[#FF3131] text-white py-4.5 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 shadow-[0_10px_20px_-10px_rgba(255,49,49,0.5)] active:scale-[0.98] transition-all"
+                                        className="flex-[2] bg-[#FF3131] text-white py-[18px] rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 shadow-[0_10px_20px_-10px_rgba(255,49,49,0.5)] active:scale-[0.98] transition-all disabled:opacity-50"
                                     >
                                         {loading ? <><Loader2 className="animate-spin" size={16} /> {loadingStage}</> : <>Confirm & Initialize</>}
                                     </button>

@@ -122,7 +122,7 @@ export default function SharePostModal({ postId, postPreview, onClose }: Props) 
                     <button onClick={onClose} className="text-zinc-500 hover:text-zinc-800 dark:hover:text-white transition-colors">
                         <X size={20} />
                     </button>
-                    <span className="font-semibold text-[15px] dark:text-white">Share</span>
+                    <span className="font-semibold text-[15px] text-zinc-900 dark:text-white">Share</span>
                     <button
                         disabled={!selected.length || sending || sent}
                         onClick={handleSend}
@@ -183,7 +183,7 @@ export default function SharePostModal({ postId, postPreview, onClose }: Props) 
                         placeholder="Search"
                         value={query}
                         onChange={e => setQuery(e.target.value)}
-                        className="flex-1 text-[15px] outline-none bg-transparent dark:text-white placeholder-zinc-400"
+                        className="flex-1 text-[15px] outline-none bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400"
                     />
                     {(searching || loadingThreads) && (
                         <div className="w-4 h-4 border-2 border-zinc-300 dark:border-zinc-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
@@ -209,7 +209,7 @@ export default function SharePostModal({ postId, postPreview, onClose }: Props) 
                                 className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors">
                                 <Avatar src={user.profilePicture} name={user.username} size={48} />
                                 <div className="flex-1 text-left min-w-0">
-                                    <div className="text-[15px] font-medium dark:text-white truncate">{user.username}</div>
+                                    <div className="text-[15px] font-medium text-zinc-900 dark:text-white truncate">{user.username}</div>
                                     {user.name && user.name !== user.username && (
                                         <div className="text-xs text-zinc-400 truncate">{user.name}</div>
                                     )}
@@ -236,7 +236,7 @@ export default function SharePostModal({ postId, postPreview, onClose }: Props) 
                                     size={48}
                                     isGroup={thread.type === "group"}
                                 />
-                                <span className="flex-1 text-[15px] font-medium dark:text-white text-left truncate">{name}</span>
+                                <span className="flex-1 text-[15px] font-medium text-zinc-900 dark:text-white text-left truncate">{name}</span>
                                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
                                     sel ? "bg-blue-500 border-blue-500" : "border-zinc-300 dark:border-zinc-600"
                                 }`}>

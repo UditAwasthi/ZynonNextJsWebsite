@@ -62,7 +62,7 @@ export default function CreateGroupModal({ onClose, onCreated }: Props) {
                     <button onClick={onClose} className="text-zinc-500 hover:text-zinc-800 dark:hover:text-white transition-colors">
                         <X size={20} />
                     </button>
-                    <span className="font-semibold text-[15px] dark:text-white">New Group</span>
+                    <span className="font-semibold text-[15px] text-zinc-900 dark:text-white">New Group</span>
                     {step === "members" ? (
                         <button
                             disabled={selected.length < 2}

@@ -73,7 +73,7 @@ export default function ForwardModal({ onClose, onForward, cachedThreads }: Prop
                     >
                         <X size={20} />
                     </button>
-                    <span className="font-black text-[16px] tracking-tight dark:text-white">Forward</span>
+                    <span className="font-black text-[16px] tracking-tight text-zinc-900 dark:text-white">Forward</span>
                     <button
                         disabled={!selected.length || sending}
                         onClick={handleSend}
@@ -101,7 +101,7 @@ export default function ForwardModal({ onClose, onForward, cachedThreads }: Prop
                             placeholder="Search people…"
                             value={query}
                             onChange={e => setQuery(e.target.value)}
-                            className="bg-transparent text-sm outline-none w-full dark:text-white placeholder-zinc-500 font-medium"
+                            className="bg-transparent text-sm outline-none w-full text-zinc-900 dark:text-white placeholder-zinc-500 font-medium"
                         />
                     </div>
                 </div>
@@ -149,7 +149,7 @@ export default function ForwardModal({ onClose, onForward, cachedThreads }: Prop
                                             )}
                                         </div>
                                         <div className="flex flex-col items-start">
-                                            <span className={`text-[15px] font-bold ${isSent ? "text-zinc-400" : "dark:text-white"}`}>
+                                            <span className={`text-[15px] font-bold ${isSent ? "text-zinc-400" : "text-zinc-900 dark:text-white"}`}>
                                                 {name}
                                             </span>
                                             <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">

@@ -217,8 +217,8 @@ export default function MessageBubble({
                                         <div className="p-4 flex items-center gap-3 bg-zinc-50/10 rounded-[18px] min-w-[200px]">
                                             <div className="p-2.5 bg-blue-500/10 text-blue-500 rounded-xl"><FileText size={20} /></div>
                                             <div className="flex flex-col min-w-0">
-                                                <span className="text-sm font-bold truncate">Attachment</span>
-                                                <span className="text-[10px] opacity-60 uppercase">Click to view</span>
+                                                <span className="text-sm font-bold truncate text-inherit">Attachment</span>
+                                                <span className="text-[10px] opacity-60 uppercase text-inherit">Click to view</span>
                                             </div>
                                         </div>
                                     )}
@@ -332,8 +332,8 @@ function MenuItem({ icon, label, onClick, danger = false }: {
         <button
             onClick={onClick}
             className={`w-full flex items-center justify-between px-5 py-3.5 text-[14px] font-bold transition-all active:bg-zinc-100 dark:active:bg-zinc-800 ${danger
-                    ? "text-red-500 hover:bg-red-500 hover:text-white"
-                    : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-900 dark:hover:bg-white hover:text-white dark:hover:text-black"
+                    ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+                    : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 }`}
         >
             <span>{label}</span>

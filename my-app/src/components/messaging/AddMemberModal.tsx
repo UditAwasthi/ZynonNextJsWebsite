@@ -56,7 +56,7 @@ export default function AddMemberModal({ threadId, onClose }: Props) {
                     <button onClick={onClose} className="text-zinc-500 hover:text-zinc-800 dark:hover:text-white transition-colors">
                         <X size={20} />
                     </button>
-                    <span className="font-semibold text-[15px] dark:text-white">Add Members</span>
+                    <span className="font-semibold text-[15px] text-zinc-900 dark:text-white">Add Members</span>
                     <button
                         disabled={!selected.length || adding || done}
                         onClick={handleAdd}

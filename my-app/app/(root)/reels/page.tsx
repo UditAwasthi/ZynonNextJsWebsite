@@ -6,6 +6,7 @@ import { Heart, MessageCircle, Play, Pause, VolumeX, Volume2, Film, Share2, Chec
 import { getReelsFeed, type FeedPost } from "../../../src/lib/api/feedApi";
 import { toggleLike } from "../../../src/lib/api/postApi";
 import { cache } from "../../../src/lib/cache";
+import SharePostModal from "../../../src/components/messaging/Sharepostmodal";
 
 const CACHE_TTL = 3 * 60_000;
 const reelsCacheKey = (cursor?: string) => `feed:reels:${cursor ?? "first"}`;
@@ -96,15 +97,16 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
         const isDesktop = typeof window !== "undefined" && window.innerWidth >= 768;
         return isDesktop ? videoRefDesktop.current : videoRef.current;
     };
-    const [playing,   setPlaying]   = useState(false);
-    const [muted,     setMuted]     = useState(false);
-    const [liked,     setLiked]     = useState(false);
-    const [likeCount, setLikeCount] = useState(reel.likesCount);
-    const [liking,    setLiking]    = useState(false);
-    const [likeAnim,  setLikeAnim]  = useState(false);
-    const [showCtrl,  setShowCtrl]  = useState(false);
-    const [copied,    setCopied]    = useState(false);
-    const [progress,  setProgress]  = useState(0);
+    const [playing,    setPlaying]    = useState(false);
+    const [muted,      setMuted]      = useState(false);
+    const [liked,      setLiked]      = useState(false);
+    const [likeCount,  setLikeCount]  = useState(reel.likesCount);
+    const [liking,     setLiking]     = useState(false);
+    const [likeAnim,   setLikeAnim]   = useState(false);
+    const [showCtrl,   setShowCtrl]   = useState(false);
+    const [showShare,  setShowShare]  = useState(false);   // ← NEW: controls SharePostModal
+    const [progress,   setProgress]   = useState(0);
+
     // Sync muted to both video elements when state changes
     useEffect(() => {
         if (videoRef.current)        videoRef.current.muted        = muted;
@@ -120,11 +122,9 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
         if (isActive) {
             const isDesktop = window.innerWidth >= 768;
             if (isDesktop) {
-                // Desktop: play card video only, ensure mobile video is stopped
                 if (vid) { vid.pause(); vid.currentTime = 0; }
                 vidD?.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
             } else {
-                // Mobile: play fullscreen video only, ensure desktop video is stopped
                 if (vidD) { vidD.pause(); vidD.currentTime = 0; }
                 vid?.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
             }
@@ -168,22 +168,22 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
         finally { setLiking(false); }
     };
 
+    // ← CHANGED: open SharePostModal instead of clipboard copy
     const handleShare = (e: React.MouseEvent) => {
         e.stopPropagation();
-        try { navigator.clipboard?.writeText(`${window.location.origin}/posts/${reel._id}`); } catch {}
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        setShowShare(true);
+    };
+
+    // Post preview for SharePostModal
+    const sharePreview = {
+        imageUrl: media?.type === "image" ? media.url : undefined,
+        caption: reel.caption,
     };
 
     return (
         <div className="w-full h-[calc(100dvh-7.5rem)] md:h-screen bg-zinc-100 dark:bg-black flex items-center justify-center relative overflow-hidden">
             <div className="rl-dot-grid absolute inset-0 pointer-events-none z-0" />
             <div className="rl-scan-line" />
-
-            {/* ─────────────────────────────────────────────────────────────────
-                Single <video> — positioned to fill screen on mobile,
-                constrained card on desktop. CSS handles both.
-            ───────────────────────────────────────────────────────────────── */}
 
             {/* VIDEO LAYER — absolute full-screen on mobile, hidden on desktop */}
             <div
@@ -261,9 +261,10 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
                         <MessageCircle size={27} strokeWidth={1.75} className="text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]" />
                         <span className="font-mono text-[10px] font-black text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)] tabular-nums">{fmtCount(reel.commentsCount)}</span>
                     </Link>
+                    {/* ← CHANGED: share button opens modal */}
                     <button onClick={handleShare} className="flex flex-col items-center gap-1 active:scale-90 transition-transform">
-                        {copied ? <Check size={26} strokeWidth={2.5} className="text-green-400 drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]" /> : <Share2 size={26} strokeWidth={1.75} className="text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]" />}
-                        <span className={`font-mono text-[10px] font-black drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)] ${copied ? "text-green-400" : "text-white"}`}>{copied ? "Done" : "Share"}</span>
+                        <Share2 size={26} strokeWidth={1.75} className="text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]" />
+                        <span className="font-mono text-[10px] font-black text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]">Share</span>
                     </button>
                     <button onClick={e => { e.stopPropagation(); setMuted(m => !m); }} className="flex flex-col items-center gap-1 active:scale-90 transition-transform">
                         {muted ? <VolumeX size={26} strokeWidth={1.75} className="text-white/50 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]" /> : <Volume2 size={26} strokeWidth={1.75} className="text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]" />}
@@ -352,12 +353,13 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
                         </div>
                         <span className="font-mono text-[9px] font-black text-zinc-500 dark:text-white/50 tabular-nums">{fmtCount(reel.commentsCount)}</span>
                     </Link>
+                    {/* ← CHANGED: desktop share button opens modal */}
                     <button onClick={handleShare} className="flex flex-col items-center gap-1.5 group active:scale-90 transition-transform">
-                        <div className="w-11 h-11 flex items-center justify-center border transition-all duration-200"
-                            style={{ borderRadius: 12, borderColor: copied ? "rgba(34,197,94,0.5)" : "rgba(120,120,128,0.4)", background: copied ? "rgba(34,197,94,0.1)" : "rgba(128,128,128,0.15)", backdropFilter: "blur(8px)" }}>
-                            {copied ? <Check size={18} strokeWidth={2.5} className="text-green-500" /> : <Share2 size={18} strokeWidth={1.5} className="text-zinc-700 dark:text-white" />}
+                        <div className="w-11 h-11 flex items-center justify-center border border-zinc-300 dark:border-zinc-800 group-hover:border-zinc-500 dark:group-hover:border-zinc-600 transition-colors"
+                            style={{ borderRadius: 12, background: "rgba(128,128,128,0.15)", backdropFilter: "blur(8px)" }}>
+                            <Share2 size={18} strokeWidth={1.5} className="text-zinc-700 dark:text-white" />
                         </div>
-                        <span className={`font-mono text-[9px] font-black tabular-nums transition-colors ${copied ? "text-green-500" : "text-zinc-500 dark:text-white/50"}`}>{copied ? "Done" : "Share"}</span>
+                        <span className="font-mono text-[9px] font-black text-zinc-500 dark:text-white/50">Share</span>
                     </button>
                     <button onClick={e => { e.stopPropagation(); setMuted(m => !m); }} className="flex flex-col items-center gap-1.5 group active:scale-90 transition-transform">
                         <div className="w-11 h-11 flex items-center justify-center border border-zinc-300 dark:border-zinc-800 group-hover:border-zinc-500 dark:group-hover:border-zinc-600 transition-colors"
@@ -369,12 +371,13 @@ function ReelItem({ reel, isActive, index }: { reel: FeedPost; isActive: boolean
                 </div>
             </div>
 
-            {/* Copied toast — both breakpoints */}
-            {copied && (
-                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 border border-green-500/30 bg-black/90 backdrop-blur-xl" style={{ borderRadius: 10, animation: "rl-toast 2s ease forwards" }}>
-                    <Check size={11} className="text-green-400" strokeWidth={2.5} />
-                    <span className="font-mono text-[9px] font-black tracking-[0.2em] uppercase text-green-400">Link_Copied</span>
-                </div>
+            {/* ── SharePostModal — rendered per-reel, portal handles z-index ── */}
+            {showShare && (
+                <SharePostModal
+                    postId={reel._id}
+                    postPreview={sharePreview}
+                    onClose={() => setShowShare(false)}
+                />
             )}
         </div>
     );

@@ -74,7 +74,7 @@ export default function UserSearchInput({ selected, onToggle, placeholder = "Sea
                             className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-full pl-2 pr-2 py-1 transition-colors"
                         >
                             <Avatar src={u.profilePicture} name={u.username} size={18} />
-                            <span className="text-sm dark:text-white font-medium">{u.username}</span>
+                            <span className="text-sm text-zinc-900 dark:text-white font-medium">{u.username}</span>
                             <X size={12} className="text-zinc-400 flex-shrink-0" />
                         </button>
                     ))}
@@ -90,7 +90,7 @@ export default function UserSearchInput({ selected, onToggle, placeholder = "Sea
                     placeholder={placeholder}
                     value={query}
                     onChange={e => setQuery(e.target.value)}
-                    className="flex-1 text-[15px] outline-none bg-transparent dark:text-white placeholder-zinc-400"
+                    className="flex-1 text-[15px] outline-none bg-transparent text-zinc-900 dark:text-white placeholder-zinc-400"
                 />
                 {loading && (
                     <div className="w-4 h-4 border-2 border-zinc-300 dark:border-zinc-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
@@ -117,7 +117,7 @@ export default function UserSearchInput({ selected, onToggle, placeholder = "Sea
                             >
                                 <Avatar src={user.profilePicture} name={user.username} size={44} />
                                 <div className="flex-1 text-left min-w-0">
-                                    <div className="text-sm font-semibold dark:text-white truncate">{user.username}</div>
+                                    <div className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{user.username}</div>
                                     {user.name && user.name !== user.username && (
                                         <div className="text-xs text-zinc-400 truncate">{user.name}</div>
                                     )}

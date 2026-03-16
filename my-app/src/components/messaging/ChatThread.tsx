@@ -739,7 +739,7 @@ export default function ChatThread({ thread, onBack, currentUserId, token }: Pro
                             onChange={handleInputChange}
                             onKeyDown={handleKeyDown}
                             placeholder="Message…"
-                            className="flex-1 bg-transparent py-3.5 px-2 text-[16px] font-medium dark:text-white outline-none placeholder-zinc-500/80 leading-relaxed resize-none overflow-hidden scrollbar-none"
+                            className="flex-1 bg-transparent py-3.5 px-2 text-[16px] font-medium text-zinc-900 dark:text-white outline-none placeholder-zinc-500/80 leading-relaxed resize-none overflow-hidden scrollbar-none"
                             style={{ height: "50px", maxHeight: "150px" }}
                         />
 
