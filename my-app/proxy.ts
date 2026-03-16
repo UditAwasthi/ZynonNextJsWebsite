@@ -9,10 +9,6 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/home", request.url))
   }
 
-  if (token && (pathname === "/login" || pathname === "/register")) {
-    return NextResponse.redirect(new URL("/home", request.url))
-  }
-
   // Protect everything except auth routes
   const publicRoutes = ["/login", "/signup", "/register", "/forgot","/createProfile"]
   const isPublic = publicRoutes.some(route => pathname.startsWith(route))
